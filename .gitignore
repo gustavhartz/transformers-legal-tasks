@@ -133,3 +133,5 @@ dmypy.json
 .AppleDouble
 .LSOverride
 
+data/*
+!data/.gitkeep
