@@ -42,10 +42,10 @@ class LogTextSamplesCallback(Callback):
             # decode
             preds_text = [tokenizer.decode(x[2][x[0]:x[1]]) if x[0] < x[1] else "[END BEFORE START]" for x in zip(
                 start_pred, end_pred, batch['input_ids'])]
-            columns = ['question', 'answer',
+            columns = ['index','is_impossible','question', 'answer',
                        'prediction', 'start_pos', 'end_pos']
             data = list(
-                zip(questions, answers, preds_text, start_pred, end_pred))
+                zip(batch['id'],batch['is_impossible'], questions, answers, preds_text, start_pred, end_pred))
             wandb_logger.log_text(
                 key='train_pred_sample', columns=columns, data=data)
 
@@ -73,10 +73,10 @@ class LogTextSamplesCallback(Callback):
             # decode
             preds_text = [tokenizer.decode(x[2][x[0]:x[1]]) if x[0] < x[1] else "[END BEFORE START]" for x in zip(
                 start_pred, end_pred, batch['input_ids'])]
-            columns = ['question', 'answer',
+            columns = ['index','is_impossible','question', 'answer',
                        'prediction', 'start_pos', 'end_pos']
             data = list(
-                zip(questions, answers, preds_text, start_pred, end_pred))
+                zip(batch['id'],batch['is_impossible'], questions, answers, preds_text, start_pred, end_pred))
             wandb_logger.log_text(
                 key='valid_pred_sample', columns=columns, data=data)
 
@@ -84,12 +84,12 @@ class LogTextSamplesCallback(Callback):
 def main():
     global hparams
     hparams = {
-        'lr': 3e-5,
+        'lr': 1e-5,
         'batch_size': 8,
         'num_workers': 5,
         'num_labels': 2,
         'hidden_size': 768,
-        'num_train_epochs': 4,
+        'num_train_epochs': 6,
         'bert_model': 'bert-base-uncased',
         'log_text_every_n_batch': 30,
         'log_text_every_n_batch_valid': 10
@@ -114,7 +114,7 @@ def main():
     tokenizer = BertTokenizerFast.from_pretrained(
         hparams['bert_model'])
     litModel = PLQAModel(model, hparams, tokenizer)
-    trainer = pl.Trainer(gpus=2, max_epochs=hparams['num_train_epochs'],
+    trainer = pl.Trainer(gpus=4, max_epochs=hparams['num_train_epochs'],
                          logger=wandb_logger, strategy='ddp', callbacks=[LogTextSamplesCallback()])
     trainer.fit(litModel, train_loader, val_loader)
     torch.save(litModel.model, "model.model")

@@ -133,5 +133,5 @@ dmypy.json
 .AppleDouble
 .LSOverride
 
-data/*
-!data/.gitkeep
+cuad_training/data/*
+!cuad_training/data/.gitkeep
