@@ -16,7 +16,7 @@ import torch
 
 def random_slice_index(l, tkn_start, tkn_end, slice_len=500):
     if len(l) <= slice_len:
-        return (tkn_start, tkn_end)
+        return (0, len(l)-2)
 
     # Random start position some place before the start token but with space to cover the answer span
 
@@ -69,7 +69,7 @@ def normalize_answer(s):
     return white_space_fix(remove_punc(lower(s))).replace(" ", '').replace('\xad', '').replace('\u00ad', '').replace('\N{SOFT HYPHEN}', '').replace('\u200b', '')
 
 
-def create_dataset(ds, tokenizer, _len):
+def create_dataset(ds, tokenizer, _len, token_len=500):
     train = ds
     _errs = {"too long": 0,
              "no ans": 0,
@@ -77,31 +77,39 @@ def create_dataset(ds, tokenizer, _len):
              "Multiple Answers": 0}
     res = []
     id_map = {}
-    _i = 1
+    _i = 0
     for sample in tqdm(train):
-        _id = id_map.get(sample['id'], "TEST")
-        if _id == "TEST":
-            _id = _i
-            id_map[sample['id']] = _i
-            _i += 1
+        id_map[_i] = sample['id']
+        _i += 1
         # Get data entries
         title = sample['title']
         context = sample['context']
         question = sample['question']
         answers = sample['answers']
+
+        # Tokenize question to get lenght
+        q_tok = tokenizer(question)
+
         if not answers['text']:
             _errs['no ans'] += 1
             # get random section
-            start_pos = random.randint(0, max(len(context)-_len, len(context)))
-            end_pos = start_pos + _len
+            start_pos = random.randint(
+                0, max(len(context)-_len*4, min(_len*4, max(len(context)-token_len, 0))))
+            end_pos = start_pos + _len*4
             context_slice = context[start_pos:end_pos]
-            # get random answer
+
+            # Ensure a large sample is inserted
+            encoding = tokenizer(context_slice, question,
+                                 truncation=True, padding=True)
+            start = encoding['token_type_ids'].index(1)-2
+            # yield random answer
             res.append({'start_positions': 1,
                         'end_positions': 1,
                         'question': question,
-                        'context': context_slice,
-                        'id': _id,
-                        'char_span': start_pos,
+                        'context': context_slice[:encoding.token_to_chars(start).end],
+                        'id': _i,
+                        'original_id': sample['id'],
+                        'char_span_start': start_pos,
                         'is_impossible': True,
                         'title': title,
                         'answer': ''})
@@ -111,12 +119,14 @@ def create_dataset(ds, tokenizer, _len):
             continue
         start_pos = answers['answer_start'][0]
         end_pos = start_pos + len(answers['text'][0])
-        start_pos_small_context = start_pos - max(0, start_pos-_len)
-        end_pos_small_context = end_pos - max(0, start_pos-_len)
+        start_offset = max(0, start_pos-_len*2)
+        end_offset = min(len(context), end_pos+_len*2)
+        start_pos_small_context = start_pos - start_offset
+        end_pos_small_context = end_pos - start_offset
 
         # Manipulate data
-        small_context = context[max(0, start_pos-_len):end_pos+_len]
-        sml_ctx_start = max(0, start_pos-_len)
+        small_context = context[start_offset:end_offset]
+        sml_ctx_start = start_offset
         # Get tokenization data
         encoding = tokenizer(small_context)
         tkn_start = encoding.char_to_token(start_pos_small_context)
@@ -152,14 +162,13 @@ def create_dataset(ds, tokenizer, _len):
 
 
         """
-        # Tokenize question to get the length of the question
-        q_tok = tokenizer(question)
         # Get random split
-        if tkn_end-tkn_start + len(q_tok['input_ids']) > _len-10:
+        if tkn_end-tkn_start + len(q_tok['input_ids']) > token_len-10:
             _errs['no ans'] += 1
             continue
+        # TODO: This might be the lenght issue
         loc = random_slice_index(encoding['input_ids'], tkn_start,
-                                 tkn_end, _len-10 - len(q_tok['input_ids']))
+                                 tkn_end, token_len-10 - len(q_tok['input_ids']))
         new_char_span = (encoding.token_to_chars(max(loc[0], 1))[
             0], encoding.token_to_chars(loc[1])[1])
 
@@ -176,7 +185,8 @@ def create_dataset(ds, tokenizer, _len):
                     'end_positions': pre_pro_ans_end_pos,
                     'question': question,
                     'context': pre_pro_context,
-                    'id': _id,
+                    'id': _i,
+                    'original_id': sample['id'],
                     'char_span_start': sml_ctx_start+new_char_span[0],
                     'is_impossible': False,
                     'answer': answers['text'][0],
@@ -216,21 +226,24 @@ def main(args):
     train = load_dataset("cuad", split='train')
     test = load_dataset("cuad", split='test')
     tokenizer = BertTokenizerFast.from_pretrained(args.model_type)
-    _len = args.max_seq_length_soft_limit
+    _len = args.contex_size_snippet
+    token_limit = args.max_seq_length
     random.seed(5132)
     # Not very pretty
     print("Creating train set")
-    train, train_id_map = create_dataset(train, tokenizer, _len)
+    train, train_id_map = create_dataset(train, tokenizer, _len, token_limit)
     print("Creating train set")
-    test, test_id_map = create_dataset(test, tokenizer, _len)
+    test, test_id_map = create_dataset(test, tokenizer, _len, token_limit)
     print("Saving data to cwd set")
-    with open('./data/train_data.json', 'w') as fout:
+    # Add postfix to avoid overwriting
+
+    with open(f'./data/train_data{args.postfix}.json', 'w') as fout:
         json.dump({'data': train}, fout)
-    with open('./data/train_data_id_mapping.json', 'w') as fout:
+    with open(f'./data/train_data_id_mapping{args.postfix}.json', 'w') as fout:
         json.dump({'data': train_id_map}, fout)
-    with open('./data/test_data.json', 'w') as fout:
+    with open(f'./data/test_data.json{args.postfix}', 'w') as fout:
         json.dump({'data': test}, fout)
-    with open('./data/test_data_id_mapping.json', 'w') as fout:
+    with open(f'./data/test_data_id_mapping{args.postfix}.json', 'w') as fout:
         json.dump({'data': test_id_map}, fout)
 
     # Tokenize data if arg
@@ -255,11 +268,14 @@ if __name__ == "__main__":
     argparser.add_argument('--max_seq_length', type=int,
                            default=512, help='Max sequence length')
     # Model max sequence length soft limit
-    argparser.add_argument('--max_seq_length_soft_limit', type=int,
-                           default=400, help='Max sequence length to aim for')
+    argparser.add_argument('--contex_size_snippet', type=int,
+                           default=1500, help='Max sequence length to aim for')
     # Create encodings argument - boolean
     argparser.add_argument('--create_encodings', type=bool,
-                           default=True, help='Create encodings')
+                           default=False, help='Create encodings')
+    # postfix for datasets
+    argparser.add_argument('--postfix', type=str,
+                           default='test', help='Postfix for dataset. Used when testing')
 
     args = argparser.parse_args()
     main(args)
