@@ -71,7 +71,7 @@ class PLQAModel(pl.LightningModule):
         em_sum, f1_sum = 0, 0
         for pred in outputs:
             _sum += pred['loss'].item()
-            em_sum += pred['metrics']['exact_match']
+            em_sum += pred['metrics']['em']
             f1_sum += pred['metrics']['f1']
             ct_batch += 1
             ct_total += pred['metrics']['batch_len']
