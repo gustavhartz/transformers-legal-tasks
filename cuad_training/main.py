@@ -1,5 +1,6 @@
 
 # Run training of the model using pytorch lightning
+from utils import get_pred_from_batch_outputs
 from lightning import PLQAModel
 from models import QAModelBert
 import pytorch_lightning as pl
@@ -27,27 +28,17 @@ class LogTextSamplesCallback(Callback):
             wandb_logger = pl_module.logger
             tokenizer = BertTokenizerFast.from_pretrained(
                 hparams['bert_model'])
-            # Make iterable and reusable where each row consitutes a set of values
-            batch_values = list(zip(
-                batch['input_ids'], batch['token_type_ids'], batch['start_positions'], batch['end_positions']))
-            # Non zero values correspond to the seperation
-            # https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer
-            questions = [tokenizer.decode(
-                x[0][x[1].nonzero().squeeze()]) for x in batch_values]
-            answers = [tokenizer.decode(x[0][x[2]:x[3]]) for x in batch_values]
 
-            # Only top 1 prediction
-            start_pred = torch.argmax(outputs['pred'][0], dim=1)
-            end_pred = torch.argmax(outputs['pred'][1], dim=1)
-            # decode
-            preds_text = [tokenizer.decode(x[2][x[0]:x[1]]) if x[0] < x[1] else "[END BEFORE START]" for x in zip(
-                start_pred, end_pred, batch['input_ids'])]
-            columns = ['index','is_impossible','question', 'answer',
-                       'prediction', 'start_pos', 'end_pos']
-            data = list(
-                zip(batch['id'],batch['is_impossible'], questions, answers, preds_text, start_pred, end_pred))
+            collected_results = get_pred_from_batch_outputs(
+                batch, outputs['pred'][0], outputs['pred'][1], tokenizer)
+            flattend_results = [
+                list(item) for sublist in collected_results for item in sublist]
+
+            columns = ['id', 'top_k_id', 'is_impossible', 'prediction', 'answer',
+                       'confidence', 'start_token_pos', 'end_token_pos']
+
             wandb_logger.log_text(
-                key='train_pred_sample', columns=columns, data=data)
+                key='train_pred_sample', columns=columns, data=flattend_results)
 
     def on_validation_batch_end(
             self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
@@ -58,27 +49,17 @@ class LogTextSamplesCallback(Callback):
             wandb_logger = pl_module.logger
             tokenizer = BertTokenizerFast.from_pretrained(
                 hparams['bert_model'])
-            # Make iterable and reusable where each row consitutes a set of values
-            batch_values = list(zip(
-                batch['input_ids'], batch['token_type_ids'], batch['start_positions'], batch['end_positions']))
-            # Non zero values correspond to the seperation
-            # https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer
-            questions = [tokenizer.decode(
-                x[0][x[1].nonzero().squeeze()]) for x in batch_values]
-            answers = [tokenizer.decode(x[0][x[2]:x[3]]) for x in batch_values]
 
-            # Only top 1 prediction
-            start_pred = torch.argmax(outputs['pred'][0], dim=1)
-            end_pred = torch.argmax(outputs['pred'][1], dim=1)
-            # decode
-            preds_text = [tokenizer.decode(x[2][x[0]:x[1]]) if x[0] < x[1] else "[END BEFORE START]" for x in zip(
-                start_pred, end_pred, batch['input_ids'])]
-            columns = ['index','is_impossible','question', 'answer',
-                       'prediction', 'start_pos', 'end_pos']
-            data = list(
-                zip(batch['id'],batch['is_impossible'], questions, answers, preds_text, start_pred, end_pred))
+            collected_results = get_pred_from_batch_outputs(
+                batch, outputs['pred'][0], outputs['pred'][1], tokenizer)
+            flattend_results = [
+                list(item) for sublist in collected_results for item in sublist]
+
+            columns = ['id', 'top_k_id', 'is_impossible', 'prediction', 'answer',
+                       'confidence', 'start_token_pos', 'end_token_pos']
+
             wandb_logger.log_text(
-                key='valid_pred_sample', columns=columns, data=data)
+                key='valid_pred_sample', columns=columns, data=flattend_results)
 
 
 def main():

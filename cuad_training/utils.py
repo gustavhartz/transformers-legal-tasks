@@ -1,8 +1,11 @@
+from ast import Tuple
 import re
 import string
 from collections import Counter
+from typing import List
 import torch
 import copy
+import numpy as np
 
 
 def normalize_answer(s):
@@ -120,6 +123,230 @@ def calculate_batch_accuracy(batch, start, end, tokenizer):
     preds_text = [tokenizer.decode(x[2][x[0]:x[1]]) if x[0] < x[1] else "[END BEFORE START]" for x in zip(
         start_pred, end_pred, batch['input_ids'])]
     return evaluate(answers, preds_text)
+
+
+def get_jaccard(gt, pred):
+    remove_tokens = [".", ",", ";", ":"]
+    for token in remove_tokens:
+        gt = gt.replace(token, "")
+        pred = pred.replace(token, "")
+    gt = gt.lower()
+    pred = pred.lower()
+    gt = gt.replace("/", " ")
+    pred = pred.replace("/", " ")
+
+    gt_words = set(gt.split(" "))
+    pred_words = set(pred.split(" "))
+
+    intersection = gt_words.intersection(pred_words)
+    union = gt_words.union(pred_words)
+    jaccard = len(intersection) / len(union)
+    return jaccard
+
+
+def compute_top_1_scores_from_preds(predictions, iou_threshold=0.5, include_df=False):
+    """Generates the top 1 predictions from the given predictions in the get_predictions_from_batch function.
+
+    Args:
+        predictions (_type_): output of the get_predictions_from_batch function
+        iou_threshold (float, optional): jaccard limit. Defaults to 0.5.
+        include_df (bool, optional): get df of results. Defaults to False.
+
+    Returns:
+        _type_: _description_
+    """
+
+    # Compute precision, recall, f1, em - best
+    df = []
+    df_struct = {"id": None,
+                 "question": None,
+                 "is_impossible": None,
+                 "pred": None,
+                 "answer": None,
+                 "jaccard": None,
+                 "doc_length": None,
+                 "em": None,
+                 "tp": None,
+                 "fp": None,
+                 "tn": None,
+                 "fn": None,
+                 "top_k_idx": None,
+                 "confidence": None,
+                 "start_token_loc_pred": None,
+                 "end_token_loc_pred": None}
+    IOU_THRESH = iou_threshold
+
+    # Text ans pred text, imp ans pred text, text ans pred imp, imp ans pred imp
+    tp, fp, fn, tn = 0, 0, 0, 0
+    # exact match
+    em = 0
+    for prediction_set in predictions:
+
+        # Currently only top 1
+        _id, top_k_idx, is_impossible, _pred_text, answer, confidence, start_loc_pred, end_loc_pred = prediction_set[
+            0]
+        _tmp_df = copy.copy(df_struct)
+
+        # Set values
+        _tmp_df["is_impossible"] = is_impossible
+        _tmp_df["top_k_idx"] = 0
+        _tmp_df["id"] = _id
+        _tmp_df["answer"] = answer
+        _tmp_df["pred"] = _pred_text
+        _tmp_df["confidence"] = confidence
+        _tmp_df["start_token_loc_pred"] = start_loc_pred
+        _tmp_df["end_token_loc_pred"] = end_loc_pred
+
+        if is_impossible:
+            if len(_pred_text) > 0:
+                _tmp_df['fp'] = True
+                fp += 1
+            else:
+                tn += 1
+                _tmp_df['tn'] = True
+        else:
+            if len(_pred_text) < 1:
+                fn += 1
+                _tmp_df['fn'] = True
+            else:
+                jc = get_jaccard(answer, _pred_text)
+                _tmp_df['jaccard'] = jc
+                if normalize_answer(answer) == normalize_answer(_pred_text):
+                    _tmp_df['em'] = True
+                    _tmp_df['tp'] = True
+                    em += 1
+                    tp += 1
+                elif jc >= IOU_THRESH:
+                    _tmp_df['tp'] = True
+                    tp += 1
+                else:
+                    _tmp_df['fp'] = True
+                    fp += 1
+        df.append(_tmp_df)
+    precision = (tp+tn) / (tp+tn + fp) if tp+tn + fp > 0 else np.nan
+    recall = (tp+tn) / (tp+tn + fn) if tp+tn + fn > 0 else np.nan
+
+    res = {"tp": tp,
+           "fp": fp,
+           "fn": fn,
+           "tn": tn,
+           "em": em,
+           "precision": precision,
+           "recall": recall,
+           "count": len(predictions),
+           "f1": 2*(precision*recall)/(precision+recall)}
+    if include_df:
+        return res, df
+    return res
+
+
+def get_pred_from_batch_outputs(batch, start_logits, end_logits, tokenizer, top_k=2, max_ans_len=200) -> List[List[Tuple]]:
+    """Takes as input the batch and the outputs of the model and returns the predictions
+
+    Args:
+        batch (_type_): Batch from dataloader
+        start_logits (_type_): start logits from the model
+        end_logits (_type_): end logits from the model
+        tokenizer (_type_): To decode the tokens
+        top_k (int, optional): how many predictions to return. Defaults to 2.
+        max_ans_len (int, optional): limit answers to specific lenght. Defaults to 200.
+
+    Returns:
+        List[List[Tuple]]: Batch x Top k predictions x (id, idx_top_k , is_impossible ,_pred_text,_answer_text,confidence, _start, _end)
+    """
+
+    # Get logits
+    start_ = start_logits.detach().numpy()
+    end_ = end_logits.detach().numpy()
+    # Normalise
+    start_ = np.exp(
+        start_ - np.log(np.sum(np.exp(start_), axis=-1, keepdims=True)))
+    end_ = np.exp(end_ - np.log(np.sum(np.exp(end_), axis=-1, keepdims=True)))
+
+    # List of batch predictions
+    p = [decode(x, y, top_k, max_ans_len) for x, y in zip(start_, end_)]
+
+    predictions = []
+
+    i = 0
+    # Batch results
+    for ele in p:
+        # Top k
+        temp_collect = []
+        # Each single predictions
+        for idx, _v in enumerate(zip(ele[0], ele[1])):
+            _start, _end = _v
+            _pred = batch['input_ids'][i][_start:_end+1]
+            _id = batch['id'][i]
+            _answer_start = batch['start_positions'][i]
+            _answer_end = batch['end_positions'][i]
+
+            _answer = batch['input_ids'][i][_answer_start:_answer_end+1]
+
+            confidence = ele[2][0][idx]
+            is_impossible = batch['is_impossible'][i].numpy()
+
+            # get answer and pred text
+            if (_start == _end == 1):
+                _pred_text = ""
+            else:
+                _pred_text = tokenizer.decode(_pred)
+
+            if (_answer_start == _answer_end == 1) or (is_impossible):
+                _answer_text = ""
+            else:
+                _answer_text = tokenizer.decode(_answer)
+
+            temp_collect.append((_id.numpy(), idx, is_impossible,
+                                _pred_text, _answer_text, confidence, _start, _end))
+        predictions.append(temp_collect)
+        i += 1
+    return predictions
+
+
+def decode(
+    start: np.ndarray, end: np.ndarray, topk: int, max_answer_len: int
+):
+    """
+    Take the output of any `ModelForQuestionAnswering` and will generate probabilities for each span to be the
+    actual answer.
+    In addition, it filters out some unwanted/impossible cases like answer len being greater than max_answer_len or
+    answer end position being before the starting position. The method supports output the k-best answer through
+    the topk argument.
+    Args:
+        start (`np.ndarray`): Individual start probabilities for each token.
+        end (`np.ndarray`): Individual end probabilities for each token.
+        topk (`int`): Indicates how many possible answer span(s) to extract from the model output.
+        max_answer_len (`int`): Maximum size of the answer to extract from the model's output.
+        undesired_tokens (`np.ndarray`): Mask determining tokens that can be part of the answer
+    """
+    # Ensure we have batch axis
+    if start.ndim == 1:
+        start = start[None]
+
+    if end.ndim == 1:
+        end = end[None]
+
+    # Compute the score of each tuple(start, end) to be the real answer
+    outer = np.matmul(np.expand_dims(start, -1), np.expand_dims(end, 1))
+
+    # Remove candidate with end < start and end - start > max_answer_len
+    candidates = np.tril(np.triu(outer), max_answer_len - 1)
+    #  Inspired by Chen & al. (https://github.com/facebookresearch/DrQA)
+    scores_flat = candidates.flatten()
+    # Get nr. 1
+    if topk == 1:
+        idx_sort = [np.argmax(scores_flat)]
+    elif len(scores_flat) < topk:
+        idx_sort = np.argsort(-scores_flat)
+    else:
+        idx = np.argpartition(-scores_flat, topk)[0:topk]
+        idx_sort = idx[np.argsort(-scores_flat[idx])]
+
+    starts, ends = np.unravel_index(idx_sort, candidates.shape)[1:]
+    scores = candidates[:, starts, ends]
+
+    return starts, ends, scores
 
 
 # Test functions if name == __main__

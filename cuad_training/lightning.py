@@ -1,7 +1,7 @@
 
 import torch
 import pytorch_lightning as pl
-from utils import calculate_batch_accuracy
+from utils import compute_top_1_scores_from_preds, get_pred_from_batch_outputs
 # simple pytorch training loop using tqdm to show progress
 
 
@@ -48,10 +48,12 @@ class PLQAModel(pl.LightningModule):
             "val_loss",
             loss,
         )
-        rs = calculate_batch_accuracy(
+
+        rs = get_pred_from_batch_outputs(
             batch, outputs[1], outputs[2], self.tokenizer)
-        # Log text examples
-        return {'loss': loss, 'pred': [outputs[1], outputs[2]], 'f1': rs.get('f1'), 'exact_match': rs.get('exact_match')}
+        rs = compute_top_1_scores_from_preds(rs)
+
+        return {'loss': loss, 'pred': [outputs[1], outputs[2]], 'f1': rs.get('f1'), 'exact_match': rs.get('em'), 'precision': rs.get('precision'), 'recall': rs.get('recall')}
 
     def training_epoch_end(self, outputs):
         ct, _sum = 0, 0
@@ -65,26 +67,27 @@ class PLQAModel(pl.LightningModule):
         )
 
     def validation_epoch_end(self, outputs):
-        ct, _sum = 0, 0
+        ct_batch, ct_total, _sum = 0, 0, 0
         em_sum, f1_sum = 0, 0
         for pred in outputs:
             _sum += pred['loss'].item()
-            em_sum += pred['exact_match']
+            em_sum += pred['em']
             f1_sum += pred['f1']
-            ct += 1
+            ct_batch += 1
+            ct_total += pred['count']
         self.log(
             "epoch_val_loss",
-            _sum / ct,
+            _sum / ct_batch,
             sync_dist=True
         )
         self.log(
             "epoch_val_f1",
-            f1_sum / ct,
+            f1_sum / ct_batch,
             sync_dist=True
         )
         self.log(
             "epoch_val_em",
-            em_sum / ct,
+            em_sum / ct_total,
             sync_dist=True
         )
 
