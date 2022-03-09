@@ -199,15 +199,20 @@ def add_token_positions(encodings, answers, tokenizer):
     start_positions = []
     end_positions = []
     for i in range(len(answers)):
-        start_positions.append(encodings.char_to_token(
-            i, answers[i][0]))
-        end_positions.append(encodings.char_to_token(
-            i, answers[i][1] - 1))
-        # if None, the answer passage has been truncated
-        if start_positions[-1] is None:
-            start_positions[-1] = tokenizer.model_max_length
-        if end_positions[-1] is None:
-            end_positions[-1] = tokenizer.model_max_length
+        # Prevent issue with empty answers getting wrong span
+        if answers[i][0] == answers[i][1] == 1:
+            start_positions.append(1)
+            end_positions.append(1)
+        else:
+            start_positions.append(encodings.char_to_token(
+                i, answers[i][0]))
+            end_positions.append(encodings.char_to_token(
+                i, answers[i][1] - 1))
+            # if None, the answer passage has been truncated meaning going outside this current span
+            if start_positions[-1] is None:
+                start_positions[-1] = tokenizer.model_max_length
+            if end_positions[-1] is None:
+                end_positions[-1] = tokenizer.model_max_length
     encodings.update({'start_positions': start_positions,
                      'end_positions': end_positions})
 
@@ -272,10 +277,10 @@ if __name__ == "__main__":
                            default=1500, help='Max sequence length to aim for')
     # Create encodings argument - boolean
     argparser.add_argument('--create_encodings', type=bool,
-                           default=False, help='Create encodings')
+                           default=True, help='Create encodings')
     # postfix for datasets
     argparser.add_argument('--postfix', type=str,
-                           default='test', help='Postfix for dataset. Used when testing')
+                           default='', help='Postfix for dataset. Used when testing')
 
     args = argparser.parse_args()
     main(args)
