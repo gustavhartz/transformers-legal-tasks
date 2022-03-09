@@ -256,12 +256,12 @@ def get_pred_from_batch_outputs(batch, start_logits, end_logits, tokenizer, top_
     """
 
     # Get logits
-    start_ = start_logits.detach().numpy()
-    end_ = end_logits.detach().numpy()
+    start_ = start_logits.detach()
+    end_ = end_logits.detach()
     # Normalise
-    start_ = np.exp(
-        start_ - np.log(np.sum(np.exp(start_), axis=-1, keepdims=True)))
-    end_ = np.exp(end_ - np.log(np.sum(np.exp(end_), axis=-1, keepdims=True)))
+    start_ = torch.exp(
+        start_ - torch.log(torch.sum(torch.exp(start_), axis=-1, keepdims=True)))
+    end_ = torch.exp(end_ - torch.log(torch.sum(torch.exp(end_), axis=-1, keepdims=True)))
 
     # List of batch predictions
     p = [decode(x, y, top_k, max_ans_len) for x, y in zip(start_, end_)]
@@ -284,7 +284,7 @@ def get_pred_from_batch_outputs(batch, start_logits, end_logits, tokenizer, top_
             _answer = batch['input_ids'][i][_answer_start:_answer_end+1]
 
             confidence = ele[2][0][idx]
-            is_impossible = batch['is_impossible'][i].numpy()
+            is_impossible = batch['is_impossible'][i]
 
             # get answer and pred text
             if (_start == _end == 1):
@@ -297,7 +297,7 @@ def get_pred_from_batch_outputs(batch, start_logits, end_logits, tokenizer, top_
             else:
                 _answer_text = tokenizer.decode(_answer)
 
-            temp_collect.append((_id.numpy(), idx, is_impossible,
+            temp_collect.append((_id, idx, is_impossible,
                                 _pred_text, _answer_text, confidence, _start, _end))
         predictions.append(temp_collect)
         i += 1
@@ -305,48 +305,52 @@ def get_pred_from_batch_outputs(batch, start_logits, end_logits, tokenizer, top_
 
 
 def decode(
-    start: np.ndarray, end: np.ndarray, topk: int, max_answer_len: int
-):
-    """
-    Take the output of any `ModelForQuestionAnswering` and will generate probabilities for each span to be the
-    actual answer.
-    In addition, it filters out some unwanted/impossible cases like answer len being greater than max_answer_len or
-    answer end position being before the starting position. The method supports output the k-best answer through
-    the topk argument.
-    Args:
-        start (`np.ndarray`): Individual start probabilities for each token.
-        end (`np.ndarray`): Individual end probabilities for each token.
-        topk (`int`): Indicates how many possible answer span(s) to extract from the model output.
-        max_answer_len (`int`): Maximum size of the answer to extract from the model's output.
-        undesired_tokens (`np.ndarray`): Mask determining tokens that can be part of the answer
-    """
-    # Ensure we have batch axis
-    if start.ndim == 1:
-        start = start[None]
+        start: torch.tensor, end: torch.tensor, topk: int, max_answer_len: int
+    ):
+        """
+        Take the output of any `ModelForQuestionAnswering` and will generate probabilities for each span to be the
+        actual answer.
+        In addition, it filters out some unwanted/impossible cases like answer len being greater than max_answer_len or
+        answer end position being before the starting position. The method supports output the k-best answer through
+        the topk argument.
+        Args:
+            start (`torch.tensor`): Individual start probabilities for each token.
+            end (`torch.tensor`): Individual end probabilities for each token.
+            topk (`int`): Indicates how many possible answer span(s) to extract from the model output.
+            max_answer_len (`int`): Maximum size of the answer to extract from the model's output.
+        """
+        # Ensure we have batch axis
+        if start.ndim == 1:
+            start = start[None]
 
-    if end.ndim == 1:
-        end = end[None]
+        if end.ndim == 1:
+            end = end[None]
+        
+        # Compute the score of each tuple(start, end) to be the real answer
+        outer = torch.matmul(start.unsqueeze(-1), end.unsqueeze(1))
 
-    # Compute the score of each tuple(start, end) to be the real answer
-    outer = np.matmul(np.expand_dims(start, -1), np.expand_dims(end, 1))
+        # Remove candidate with end < start and end - start > max_answer_len
+        candidates = torch.tril(torch.triu(outer), max_answer_len - 1)
+        #  Inspired by Chen & al. (https://github.com/facebookresearch/DrQA)
+        scores_flat = candidates.flatten()
+        # Get nr. 1
+        if topk == 1:
+            idx_sort = [torch.argmax(scores_flat)]
+        elif len(scores_flat) < topk:
+            idx_sort = torch.argsort(-scores_flat)
+        else:
+            idx = torch.topk(scores_flat, topk).indices
+            idx_sort = idx[torch.argsort(-scores_flat[idx])]
+        def unravel_index(index, shape):
+            out = []
+            for dim in reversed(shape):
+                out.append(index % dim)
+                index = torch.div(index, dim, rounding_mode='trunc')
+            return tuple(reversed(out))
+        starts, ends = unravel_index(idx_sort, candidates.shape)[1:]
+        scores = candidates[:, starts, ends]
 
-    # Remove candidate with end < start and end - start > max_answer_len
-    candidates = np.tril(np.triu(outer), max_answer_len - 1)
-    #  Inspired by Chen & al. (https://github.com/facebookresearch/DrQA)
-    scores_flat = candidates.flatten()
-    # Get nr. 1
-    if topk == 1:
-        idx_sort = [np.argmax(scores_flat)]
-    elif len(scores_flat) < topk:
-        idx_sort = np.argsort(-scores_flat)
-    else:
-        idx = np.argpartition(-scores_flat, topk)[0:topk]
-        idx_sort = idx[np.argsort(-scores_flat[idx])]
-
-    starts, ends = np.unravel_index(idx_sort, candidates.shape)[1:]
-    scores = candidates[:, starts, ends]
-
-    return starts, ends, scores
+        return starts, ends, scores
 
 
 # Test functions if name == __main__
