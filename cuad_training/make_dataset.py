@@ -4,7 +4,7 @@ import re
 import string
 import copy
 from tqdm import tqdm
-from transformers import BertTokenizerFast
+from transformers import AutoTokenizer
 import argparse
 import json
 import pandas as pd
@@ -230,7 +230,7 @@ def create_encoding_dataset(df, tokenizer):
 def main(args):
     train = load_dataset("cuad", split='train')
     test = load_dataset("cuad", split='test')
-    tokenizer = BertTokenizerFast.from_pretrained(args.model_type)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_type)
     _len = args.contex_size_snippet
     token_limit = args.max_seq_length
     random.seed(5132)

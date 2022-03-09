@@ -4,17 +4,17 @@ from torch import nn
 from qaheads import linearQuestionAnsweringHead
 # Transformer model for question answering using a custom q&a head for predicting the answer span
 
-from transformers import BertModel
+from transformers import AutoModel
 
 
-class QAModelBert(nn.Module):
+class QAModel(nn.Module):
     def __init__(self,
                  hparams,
                  bertmodel):
 
-        super(QAModelBert, self).__init__()
+        super(QAModel, self).__init__()
         self.hparams = hparams
-        bert = BertModel.from_pretrained(bertmodel)
+        bert = AutoModel.from_pretrained(bertmodel)
         self.bert = bert
 
         # 768 and 2 from the normal bert config

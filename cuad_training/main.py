@@ -2,14 +2,14 @@
 # Run training of the model using pytorch lightning
 from utils import get_pred_from_batch_outputs
 from lightning import PLQAModel
-from models import QAModelBert
+from models import QAModel
 import pytorch_lightning as pl
 import torch
 from data import CUADDataset
 from torch.utils.data import DataLoader
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import Callback
-from transformers import BertTokenizerFast
+from transformers import AutoTokenizer
 
 
 class LogTextSamplesCallback(Callback):
@@ -67,7 +67,7 @@ def main():
         'num_labels': 2,
         'hidden_size': 768,
         'num_train_epochs': 6,
-        'bert_model': 'bert-base-uncased',
+        'model': 'bert-base-uncased',
         'log_text_every_n_batch': 30,
         'log_text_every_n_batch_valid': 10
     }
@@ -87,9 +87,9 @@ def main():
 
     del train_encodings
     del val_encodings
-    model = QAModelBert(hparams, hparams['bert_model'])
-    tokenizer = BertTokenizerFast.from_pretrained(
-        hparams['bert_model'])
+    model = QAModel(hparams, hparams['model'])
+    tokenizer = AutoTokenizer.from_pretrained(
+        hparams['model'])
     litModel = PLQAModel(model, hparams, tokenizer)
     trainer = pl.Trainer(gpus=4, max_epochs=hparams['num_train_epochs'],
                          logger=wandb_logger, strategy='ddp', callbacks=[LogTextSamplesCallback()])
