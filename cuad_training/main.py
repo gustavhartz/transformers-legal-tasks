@@ -26,8 +26,7 @@ class LogTextSamplesCallback(Callback):
         # Output on the first batch and on every n steps - only on main GPU. Gather all not working as exptected
         if ((batch_idx == 0) or (batch_idx % hparams['log_text_every_n_batch'] == 0)) and trainer.is_global_zero:
             wandb_logger = pl_module.logger
-            tokenizer = BertTokenizerFast.from_pretrained(
-                hparams['bert_model'])
+            tokenizer = pl_module.tokenizer
 
             collected_results = get_pred_from_batch_outputs(
                 batch, outputs['pred'][0], outputs['pred'][1], tokenizer)
@@ -47,11 +46,8 @@ class LogTextSamplesCallback(Callback):
         # Output on the first batch and on every n steps - only on main GPU. Gather all not working as exptected
         if ((batch_idx == 0) or (batch_idx % hparams['log_text_every_n_batch_valid'] == 0)) and trainer.is_global_zero:
             wandb_logger = pl_module.logger
-            tokenizer = BertTokenizerFast.from_pretrained(
-                hparams['bert_model'])
 
-            collected_results = get_pred_from_batch_outputs(
-                batch, outputs['pred'][0], outputs['pred'][1], tokenizer)
+            collected_results = outputs['top_k_preds']
             flattend_results = [
                 list(item) for sublist in collected_results for item in sublist]
 

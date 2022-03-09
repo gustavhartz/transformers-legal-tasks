@@ -233,7 +233,7 @@ def compute_top_1_scores_from_preds(predictions, iou_threshold=0.5, include_df=F
            "em": em,
            "precision": precision,
            "recall": recall,
-           "count": len(predictions),
+           "batch_len": len(predictions),
            "f1": 2*(precision*recall)/(precision+recall)}
     if include_df:
         return res, df
@@ -261,7 +261,8 @@ def get_pred_from_batch_outputs(batch, start_logits, end_logits, tokenizer, top_
     # Normalise
     start_ = torch.exp(
         start_ - torch.log(torch.sum(torch.exp(start_), axis=-1, keepdims=True)))
-    end_ = torch.exp(end_ - torch.log(torch.sum(torch.exp(end_), axis=-1, keepdims=True)))
+    end_ = torch.exp(
+        end_ - torch.log(torch.sum(torch.exp(end_), axis=-1, keepdims=True)))
 
     # List of batch predictions
     p = [decode(x, y, top_k, max_ans_len) for x, y in zip(start_, end_)]
@@ -305,52 +306,53 @@ def get_pred_from_batch_outputs(batch, start_logits, end_logits, tokenizer, top_
 
 
 def decode(
-        start: torch.tensor, end: torch.tensor, topk: int, max_answer_len: int
-    ):
-        """
-        Take the output of any `ModelForQuestionAnswering` and will generate probabilities for each span to be the
-        actual answer.
-        In addition, it filters out some unwanted/impossible cases like answer len being greater than max_answer_len or
-        answer end position being before the starting position. The method supports output the k-best answer through
-        the topk argument.
-        Args:
-            start (`torch.tensor`): Individual start probabilities for each token.
-            end (`torch.tensor`): Individual end probabilities for each token.
-            topk (`int`): Indicates how many possible answer span(s) to extract from the model output.
-            max_answer_len (`int`): Maximum size of the answer to extract from the model's output.
-        """
-        # Ensure we have batch axis
-        if start.ndim == 1:
-            start = start[None]
+    start: torch.tensor, end: torch.tensor, topk: int, max_answer_len: int
+):
+    """
+    Take the output of any `ModelForQuestionAnswering` and will generate probabilities for each span to be the
+    actual answer.
+    In addition, it filters out some unwanted/impossible cases like answer len being greater than max_answer_len or
+    answer end position being before the starting position. The method supports output the k-best answer through
+    the topk argument.
+    Args:
+        start (`torch.tensor`): Individual start probabilities for each token.
+        end (`torch.tensor`): Individual end probabilities for each token.
+        topk (`int`): Indicates how many possible answer span(s) to extract from the model output.
+        max_answer_len (`int`): Maximum size of the answer to extract from the model's output.
+    """
+    # Ensure we have batch axis
+    if start.ndim == 1:
+        start = start[None]
 
-        if end.ndim == 1:
-            end = end[None]
-        
-        # Compute the score of each tuple(start, end) to be the real answer
-        outer = torch.matmul(start.unsqueeze(-1), end.unsqueeze(1))
+    if end.ndim == 1:
+        end = end[None]
 
-        # Remove candidate with end < start and end - start > max_answer_len
-        candidates = torch.tril(torch.triu(outer), max_answer_len - 1)
-        #  Inspired by Chen & al. (https://github.com/facebookresearch/DrQA)
-        scores_flat = candidates.flatten()
-        # Get nr. 1
-        if topk == 1:
-            idx_sort = [torch.argmax(scores_flat)]
-        elif len(scores_flat) < topk:
-            idx_sort = torch.argsort(-scores_flat)
-        else:
-            idx = torch.topk(scores_flat, topk).indices
-            idx_sort = idx[torch.argsort(-scores_flat[idx])]
-        def unravel_index(index, shape):
-            out = []
-            for dim in reversed(shape):
-                out.append(index % dim)
-                index = torch.div(index, dim, rounding_mode='trunc')
-            return tuple(reversed(out))
-        starts, ends = unravel_index(idx_sort, candidates.shape)[1:]
-        scores = candidates[:, starts, ends]
+    # Compute the score of each tuple(start, end) to be the real answer
+    outer = torch.matmul(start.unsqueeze(-1), end.unsqueeze(1))
 
-        return starts, ends, scores
+    # Remove candidate with end < start and end - start > max_answer_len
+    candidates = torch.tril(torch.triu(outer), max_answer_len - 1)
+    #  Inspired by Chen & al. (https://github.com/facebookresearch/DrQA)
+    scores_flat = candidates.flatten()
+    # Get nr. 1
+    if topk == 1:
+        idx_sort = [torch.argmax(scores_flat)]
+    elif len(scores_flat) < topk:
+        idx_sort = torch.argsort(-scores_flat)
+    else:
+        idx = torch.topk(scores_flat, topk).indices
+        idx_sort = idx[torch.argsort(-scores_flat[idx])]
+
+    def unravel_index(index, shape):
+        out = []
+        for dim in reversed(shape):
+            out.append(index % dim)
+            index = torch.div(index, dim, rounding_mode='trunc')
+        return tuple(reversed(out))
+    starts, ends = unravel_index(idx_sort, candidates.shape)[1:]
+    scores = candidates[:, starts, ends]
+
+    return starts, ends, scores
 
 
 # Test functions if name == __main__

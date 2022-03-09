@@ -49,11 +49,11 @@ class PLQAModel(pl.LightningModule):
             loss,
         )
 
-        rs = get_pred_from_batch_outputs(
+        top_k_preds = get_pred_from_batch_outputs(
             batch, outputs[1], outputs[2], self.tokenizer)
-        rs = compute_top_1_scores_from_preds(rs)
+        rs = compute_top_1_scores_from_preds(top_k_preds)
 
-        return {'loss': loss, 'pred': [outputs[1], outputs[2]], 'f1': rs.get('f1'), 'exact_match': rs.get('em'), 'precision': rs.get('precision'), 'recall': rs.get('recall'), 'count':rs.get('count')}
+        return {'loss': loss, 'pred': [outputs[1], outputs[2]], 'metrics': rs, 'top_k_preds': top_k_preds}
 
     def training_epoch_end(self, outputs):
         ct, _sum = 0, 0
@@ -71,10 +71,10 @@ class PLQAModel(pl.LightningModule):
         em_sum, f1_sum = 0, 0
         for pred in outputs:
             _sum += pred['loss'].item()
-            em_sum += pred['exact_match']
-            f1_sum += pred['f1']
+            em_sum += pred['metrics']['exact_match']
+            f1_sum += pred['metrics']['f1']
             ct_batch += 1
-            ct_total += pred['count']
+            ct_total += pred['metrics']['batch_len']
         self.log(
             "epoch_val_loss",
             _sum / ct_batch,
