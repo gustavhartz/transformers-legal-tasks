@@ -7,10 +7,10 @@
 
 # Ask user to accept download
 echo "This script will download data from the CUAD website.  This data is used to create the CUAD database."
-
+echo "1"
 # Ask user to input yes to continue
-read REPLY\?"Do you wish to continue? (y/n) "
-echo    # (optional) move to a new line
+echo "Do you wish to continue? (y/n) "
+read REPLY
 
 # Check cwd is this directory
 if [[ $PWD != *"data" ]]; then
@@ -34,7 +34,7 @@ then
     rm roberta-base.zip
 
     # Get remaining files from atticus
-    https://zenodo.org/record/4595826/files/CUAD_v1.zip?download=1 -O CUAD_v1.zip
+    wget https://zenodo.org/record/4595826/files/CUAD_v1.zip?download=1 -O CUAD_v1.zip
     unzip CUAD_v1.zip
     rm CUAD_v1.zip
 
