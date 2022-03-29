@@ -136,5 +136,7 @@ dmypy.json
 cuad_training/wandb
 cuad_training/*.model
 cuad_training/bert-cuad
-cuad_training/data/*
-!cuad_training/data/.gitkeep
+cuad_training/BERT/data/*
+cuad_training/RoBERTa/data/*
+!cuad_training/BERT/data/.gitkeep
+!cuad_training/RoBERTa/data/.gitkeep
