@@ -140,3 +140,5 @@ cuad_training/BERT/data/*
 cuad_training/RoBERTa/data/*
 !cuad_training/BERT/data/.gitkeep
 !cuad_training/RoBERTa/data/.gitkeep
+
+wandb*

@@ -2,18 +2,25 @@ import transformers as tfs
 import pytorch_lightning as pl
 from torch import nn
 # Transformer model for question answering using a custom q&a head for predicting the answer span
-
-from transformers import AutoModel
+from transformers import AutoConfig
+from transformers import AutoModelForQuestionAnswering
 
 
 class QAModel(nn.Module):
     def __init__(self,
-                 hparams,
-                 bertmodel):
+                 hparams):
 
         super(QAModel, self).__init__()
         self.hparams = hparams
-        robertaQA = AutoModel.from_pretrained(bertmodel)
+        config = AutoConfig.from_pretrained(
+        hparams['model'],
+        cache_dir=None,
+        )
+        robertaQA = AutoModelForQuestionAnswering.from_pretrained(
+        hparams['model'],
+        config=config,
+        cache_dir=None,
+        )
         self.roberta = robertaQA.roberta
 
         # 768 and 2 from the normal bert config
@@ -33,7 +40,7 @@ class QAModel(nn.Module):
         output_hidden_states=None,
         return_dict=None,
     ):
-        outputs = self.bert(
+        outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -44,7 +51,11 @@ class QAModel(nn.Module):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        start_logits, end_logits = self.linearOut(outputs)
+        sequence_output = outputs[0]
+        logits = self.linearOut(sequence_output)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1).contiguous()
+        end_logits = end_logits.squeeze(-1).contiguous()
 
         # Calculate the loss
         total_loss = None

@@ -67,7 +67,7 @@ def main():
         'num_labels': 2,
         'hidden_size': 768,
         'num_train_epochs': 6,
-        'model': 'bert-base-uncased',
+        'model': 'Rakib/roberta-base-on-cuad',
         'log_text_every_n_batch': 30,
         'log_text_every_n_batch_valid': 10
     }
@@ -77,7 +77,7 @@ def main():
     train_dataset = CUADDataset(train_encodings)
     val_dataset = CUADDataset(val_encodings)
 
-    wandb_logger = WandbLogger(project="bert-cuad", entity="gustavhartz")
+    wandb_logger = WandbLogger(project="roberta-cuad-huggingface", entity="gustavhartz")
 
     print("Batch size", hparams.get("batch_size"))
     train_loader = DataLoader(
@@ -87,11 +87,11 @@ def main():
 
     del train_encodings
     del val_encodings
-    model = QAModel(hparams, hparams['model'])
+    model = QAModel(hparams)
     tokenizer = AutoTokenizer.from_pretrained(
         hparams['model'])
     litModel = PLQAModel(model, hparams, tokenizer)
-    trainer = pl.Trainer(gpus=4, max_epochs=hparams['num_train_epochs'],
+    trainer = pl.Trainer(gpus=1, max_epochs=hparams['num_train_epochs'],
                          logger=wandb_logger, strategy='ddp', callbacks=[LogTextSamplesCallback()])
     trainer.fit(litModel, train_loader, val_loader)
     torch.save(litModel.model, "model.model")
