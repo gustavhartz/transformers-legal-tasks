@@ -101,7 +101,7 @@ def create_dataset(ds, tokenizer, _len, token_len=500):
             # Ensure a large sample is inserted
             encoding = tokenizer(context_slice, question,
                                  truncation=True, padding=True)
-            start = encoding['token_type_ids'].index(1)-2
+            start = encoding['input_ids'].index(tokenizer.sep_token_id)-2
             # yield random answer
             res.append({'start_positions': 1,
                         'end_positions': 1,
@@ -279,6 +279,12 @@ if __name__ == "__main__":
     # Model max sequence length soft limit
     argparser.add_argument('--contex_size_snippet', type=int,
                            default=1500, help='Max sequence length to aim for')
+    # Create encodings argument - boolean
+    argparser.add_argument('--create_encodings', type=bool,
+                           default=True, help='Create encodings')
+    # postfix for datasets
+    argparser.add_argument('--postfix', type=str,
+                           default='', help='Postfix for dataset. Used when testing')
 
     args = argparser.parse_args()
     main(args)
