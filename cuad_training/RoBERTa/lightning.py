@@ -2,6 +2,7 @@
 import torch
 import pytorch_lightning as pl
 from utils import compute_top_1_scores_from_preds, get_pred_from_batch_outputs
+from transformers import get_linear_schedule_with_warmup
 # simple pytorch training loop using tqdm to show progress
 
 
@@ -90,7 +91,21 @@ class PLQAModel(pl.LightningModule):
             em_sum / ct_total,
             sync_dist=True
         )
+    def setup(self, stage=None) -> None:
+        if stage != "fit":
+            return
+        # Calculate total steps
+        tb_size = self.hparams.batch_size * max(1, self.trainer.gpus)
+        ab_size = self.trainer.accumulate_grad_batches * float(self.trainer.max_epochs)
+        self.total_steps = (self.hparams.train_set_size // tb_size) // ab_size
+        print("Total steps: ",self.total_steps)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.hparams.lr)
-        return optimizer
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.hparams.lr, eps=self.hparams.adam_epsilon)
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=self.hparams.warmup_steps,
+            num_training_steps=self.total_steps,
+        )
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        return [optimizer], [scheduler]

@@ -61,7 +61,7 @@ class LogTextSamplesCallback(Callback):
 def main():
     global hparams
     hparams = {
-        'lr': 1e-5,
+        'lr': 8e-5,
         'batch_size': 8,
         'num_workers': 5,
         'num_labels': 2,
@@ -69,7 +69,10 @@ def main():
         'num_train_epochs': 6,
         'model': 'Rakib/roberta-base-on-cuad',
         'log_text_every_n_batch': 30,
-        'log_text_every_n_batch_valid': 10
+        'log_text_every_n_batch_valid': 10,
+        'adam_epsilon': 1e-8,
+        'warmup_steps': 0,
+        'gpus':4,
     }
     train_encodings = torch.load("./data/train_encodings")
     # Use test set as validation set for now
@@ -82,11 +85,20 @@ def main():
     print("Batch size", hparams.get("batch_size"))
     train_loader = DataLoader(
         train_dataset, batch_size=hparams.get("batch_size"), shuffle=True, num_workers=hparams.get('num_workers'))
+    
+    hparams['train_set_size']=len(train_loader)
     val_loader = DataLoader(
         val_dataset, batch_size=hparams.get("batch_size"), shuffle=True, num_workers=hparams.get('num_workers'))
 
     del train_encodings
     del val_encodings
+    
+    # Number of train_steps
+    # tb_size = hparams['train_batch_size'] * max(1, hparams['gpus'])
+    # ab_size = self.trainer.accumulate_grad_batches * float(self.trainer.max_epochs)
+    # hparams['total_steps']=(hparams['num_train_epochs'])//tb_size//
+    
+    
     model = QAModel(hparams)
     tokenizer = AutoTokenizer.from_pretrained(
         hparams['model'])
