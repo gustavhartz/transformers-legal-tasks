@@ -7,6 +7,7 @@ import os
 from tqdm import tqdm
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from transformers.data.processors.squad import SquadResult, SquadV2Processor
+import json
 
 from evaluate_helpers_cuad import (
     squad_evaluate,
