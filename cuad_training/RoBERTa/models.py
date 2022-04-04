@@ -8,19 +8,11 @@ from transformers import AutoModelForQuestionAnswering
 
 class QAModel(nn.Module):
     def __init__(self,
-                 hparams):
+                 hparams,
+                 robertaQA):
 
         super(QAModel, self).__init__()
         self.hparams = hparams
-        config = AutoConfig.from_pretrained(
-        hparams['model'],
-        cache_dir=None,
-        )
-        robertaQA = AutoModelForQuestionAnswering.from_pretrained(
-        hparams['model'],
-        config=config,
-        cache_dir=None,
-        )
         self.roberta = robertaQA.roberta
 
         # 768 and 2 from the normal bert config
