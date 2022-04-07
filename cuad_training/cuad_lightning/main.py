@@ -146,7 +146,7 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
     # Free up memory
     del examples
     gc.collect()
-    logging.info("Saving features...")
+    logging.info(f"Saving features...{len(features)}")
     # Save features for use in training validation
     if evaluate:
         # check if features folder exists in args.our_dir
@@ -155,8 +155,9 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
         # dump features to file
         for idx, feature in enumerate(features):
             torch.save(feature, os.path.join(args.out_dir, "features", f"{idx}_features_validation"))
-    torch.save(features[0:len(features)//2], dataset_path+"_features_small")
+    logging.info(f"Saved the individual feature list files")
     torch.save(features, dataset_path+"_features")
+    logging.info(f"Saved toal feature list")
     # Free up memory
     del features
     gc.collect()
@@ -236,7 +237,7 @@ if __name__ == "__main__":
                            default=512, help='Max sequence length')
     # Used cached data
     argparser.add_argument('--cached_data', type=bool,
-                           default=False, help='Use cached data')
+                           default=True, help='Use cached data')
     # Train file
     argparser.add_argument('--train_file', type=str,
                            default='../../data/train_separate_questions.json', help='Train file')
@@ -275,7 +276,7 @@ if __name__ == "__main__":
                             default=2, help='Dataset numworkers')
     # Dataset creation threads
     argparser.add_argument('--dataset_creation_threads', type=int,
-                            default=62, help='Dataset creation threads')
+                            default=60, help='Dataset creation threads')
     # Test model
     argparser.add_argument('--test_model', type=bool,
                             default=False, help='Test model. This will not train the model and only run a single evaluation on the predict file using the CUAD metrics')
