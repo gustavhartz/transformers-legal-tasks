@@ -29,14 +29,21 @@ then
     rm -r data
 
     # Get the roberta chekpoint from atticus
-    wget https://zenodo.org/record/4599830/files/roberta-base.zip?download=1 -O roberta-base.zip
-    unzip roberta-base.zip
-    rm roberta-base.zip
+    # if roberta-base folder exists, skip
+    if [ ! -d "roberta-base" ]; then
+        wget https://zenodo.org/record/4599830/files/roberta-base.zip?download=1 -O roberta-base.zip
+        unzip roberta-base.zip
+        rm roberta-base.zip
+    fi
+
 
     # Get remaining files from atticus
-    wget https://zenodo.org/record/4595826/files/CUAD_v1.zip?download=1 -O CUAD_v1.zip
-    unzip CUAD_v1.zip
-    rm CUAD_v1.zip
+    # if CUAD_v1 folder exists, skip
+    if [ ! -d "CUAD_v1" ]; then
+        wget https://zenodo.org/record/4599830/files/CUAD_v1.zip?download=1 -O CUAD_v1.zip
+        unzip CUAD_v1.zip
+        rm CUAD_v1.zip
+    fi
 
 else
     echo "Download aborted."
