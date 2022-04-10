@@ -94,6 +94,8 @@ def main(args):
     dataset = get_or_create_dataset(
         args, tokenizer, evaluate=False)
     train_dataset = get_balanced_dataset(dataset)
+    del dataset
+    gc.collect()
     logging.info(f"Dataset size Train: {len(dataset)}")
     logging.info(f"Batch size: {args.batch_size}")
     train_loader = DataLoader(

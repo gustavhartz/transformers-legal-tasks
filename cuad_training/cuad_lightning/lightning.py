@@ -26,6 +26,8 @@ class PLQAModel(pl.LightningModule):
         self.model = model
         self.save_hyperparameters()
         self.tokenizer = tokenizer
+        # bool to check if the validation returns a loss - Logging
+        self.val_has_loss = True
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
@@ -98,7 +100,10 @@ class PLQAModel(pl.LightningModule):
                 sync_dist=True
             )
         else:
-            logging.critical("Validation did not return loss")
+            if self.val_has_loss:
+                logging.critical("Validation did not return loss")
+                self.val_has_loss = False
+
             loss = 0
             s_l = outputs[0]
             e_l = outputs[1]
