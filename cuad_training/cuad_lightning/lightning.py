@@ -226,8 +226,8 @@ class PLQAModel(pl.LightningModule):
         tb_size = self.hparams.batch_size * max(1, self.trainer.gpus)
         ab_size = self.trainer.accumulate_grad_batches * \
             float(self.trainer.max_epochs)
-        self.total_steps = (self.hparams.train_set_size // tb_size) // ab_size
-        print("Total steps: ", self.total_steps)
+        self.total_steps = int(
+            (self.hparams.train_set_size // tb_size) * ab_size)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

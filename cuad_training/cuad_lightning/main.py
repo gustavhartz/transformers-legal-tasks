@@ -1,4 +1,3 @@
-
 # Run training of the model using pytorch lightning
 from lightning import PLQAModel
 from models import QAModel
@@ -99,7 +98,7 @@ def main(args):
     logging.info(f"Batch size: {args.batch_size}")
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.dataset_num_workers)
-    hparams['train_set_size'] = len(train_loader)
+    hparams['train_set_size'] = len(train_dataset)
     # Resetting the model to add the new hparams
     litModel = PLQAModel(model, args, hparams, tokenizer)
 
@@ -146,7 +145,7 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
     # Free up memory
     del examples
     gc.collect()
-    logging.info(f"Saving features...{len(features)}")
+    logging.info(f"Saving {len(features)} features")
     # Save features for use in training validation
     if evaluate:
         # check if features folder exists in args.our_dir
@@ -155,7 +154,7 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
         # dump features to file
         for idx, feature in enumerate(features):
             torch.save(feature, os.path.join(args.out_dir, "features", f"{idx}_features_validation"))
-    logging.info(f"Saved the individual feature list files")
+        logging.info(f"Saved the individual feature list files")
     torch.save(features, dataset_path+"_features")
     logging.info(f"Saved toal feature list")
     # Free up memory
