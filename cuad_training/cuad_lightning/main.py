@@ -94,9 +94,10 @@ def main(args):
     dataset = get_or_create_dataset(
         args, tokenizer, evaluate=False)
     train_dataset = get_balanced_dataset(dataset)
+    logging.info(f"Total dataset size Train: {len(dataset)}")
+    logging.info(f"Dataset balanced size Train: {len(train_dataset)}")
     del dataset
     gc.collect()
-    logging.info(f"Dataset size Train: {len(dataset)}")
     logging.info(f"Batch size: {args.batch_size}")
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.dataset_num_workers)
