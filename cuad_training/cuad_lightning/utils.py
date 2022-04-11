@@ -5,6 +5,7 @@ import re
 import math
 import json
 import collections
+import torch
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -592,13 +593,13 @@ def compute_predictions_logits(
                 end_indexes.append(-1)
 
             nbest.append(_NbestPrediction(
-                text=final_text, start_logit=pred.start_logit, end_logit=pred.end_logit))
+                text=final_text, start_logit=pred.start_logit.item() if torch.is_tensor(pred.start_logit) else pred.start_logit, end_logit=pred.end_logit.item() if torch.is_tensor(pred.end_logit) else pred.end_logit))
 
         # if we didn't include the empty option in the n-best, include it
         if version_2_with_negative:
             if "" not in seen_predictions:
                 nbest.append(_NbestPrediction(
-                    text="", start_logit=null_start_logit, end_logit=null_end_logit))
+                    text="", start_logit=null_start_logit.item() if torch.is_tensor(null_start_logit) else null_start_logit, end_logit=null_end_logit.item() if torch.is_tensor(null_end_logit) else null_end_logit))
                 start_indexes.append(-1)
                 end_indexes.append(-1)
 
@@ -637,8 +638,10 @@ def compute_predictions_logits(
             output = collections.OrderedDict()
             output["text"] = entry.text
             output["probability"] = probs[i]
-            output["start_logit"] = entry.start_logit
-            output["end_logit"] = entry.end_logit
+            output["start_logit"] = entry.start_logit.item() if torch.is_tensor(
+                entry.start_logit) else entry.start_logit
+            output["end_logit"] = entry.end_logit.item() if torch.is_tensor(
+                entry.end_logit) else entry.end_logit
             output["token_doc_start"] = start_indexes[i]
             output["token_doc_end"] = end_indexes[i]
             nbest_json.append(output)
@@ -651,6 +654,9 @@ def compute_predictions_logits(
             # predict "" iff the null score - the score of best non-null > threshold
             score_diff = score_null - best_non_null_entry.start_logit - \
                 (best_non_null_entry.end_logit)
+
+            score_diff = score_diff.item() if torch.is_tensor(score_diff) else score_diff
+
             scores_diff_json[example.qas_id] = score_diff
             if score_diff > null_score_diff_threshold:
                 all_predictions[example.qas_id] = ""
