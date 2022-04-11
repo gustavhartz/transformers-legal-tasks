@@ -195,10 +195,6 @@ def get_results(args, n_best_predictions_path, gt_dict, gt_dict_extract_answers=
         precisions, recalls, confs, recall_thresh=0.8)
     aupr = get_aupr(precisions, recalls)
 
-    if args.verbose:
-        print("AUPR: {:.3f}, Precision at 80% Recall: {:.3f}, Precision at 90% Recall: {:.3f}".format(
-            aupr, prec_at_80_recall, prec_at_90_recall))
-
     # now save results as a dataframe and return
     results = {"name": args.model_name, "version": args.model_version, "aupr": aupr, "prec_at_80_recall": prec_at_80_recall,
                "prec_at_90_recall": prec_at_90_recall}
