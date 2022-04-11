@@ -12,6 +12,7 @@ from evaluate import get_results
 from utils_valid import (get_pred_from_batch_outputs,
                          compute_top_1_scores_from_preds)
 import logging
+import random
 logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
     level=logging.INFO,
@@ -190,8 +191,9 @@ class PLQAModel(pl.LightningModule):
                     SquadResult(unique_id, start_logits, end_logits))
 
         # Generate random string for filename
-        import random
         n = random.randint(0, 12034234)
+        torch.save(all_results, DATASET_PATH +
+                   f"_test_results_{n}")
 
         output_prediction_file = os.path.join(
             self.args.out_dir, self.args.model_name+f"_{self.args.model_version}"+f"_epoch_{self.current_epoch}_rand{n}"+"_eval_predictions.json")
@@ -219,10 +221,20 @@ class PLQAModel(pl.LightningModule):
             self.tokenizer,
         )
 
+        # Handle results
         results = squad_evaluate(examples, predictions)
-        print(results)
         res = get_results(self.args, output_nbest_file, gt_dict=json_test_dict)
-        print(res)
+
+        if self.args.verbose:
+            logging.info("***** Eval results *****")
+            print(results)
+            print(res)
+
+        for k, v in results.items():
+            self.log("test_" + k, v)
+        self.log("test_AUPR", res.get('aupr', 0))
+        self.log("test_prec_at_80_recall", res.get('prec_at_80_recall', 0))
+        self.log("test_prec_at_90_recall", res.get('prec_at_90_recall', 0))
 
     def setup(self, stage=None) -> None:
         if stage != "fit":

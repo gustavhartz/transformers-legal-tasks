@@ -15,6 +15,7 @@ from data import get_balanced_dataset
 import logging
 import gc
 import sys
+import string
 
 logging.basicConfig(
         format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -42,11 +43,7 @@ def main(args):
     hparams = vars(args)
     set_seed(hparams)
     
-
-    wandb_logger = WandbLogger(
-        project=args.project_name, entity="gustavhartz")
-    
-    # Tokenizer
+    # Tokenizer and model
     logging.info("Loading Tokenizer and model")
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_path,
@@ -72,29 +69,12 @@ def main(args):
     
     val_loader = DataLoader(
         valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.dataset_num_workers)
-    
-    # Training preparation
-    logging.info("Preparing training")
-
-    litModel = PLQAModel(model, args, hparams, tokenizer)
-
-    lr_monitor = LearningRateMonitor(logging_interval='step')
-
-    trainer = pl.Trainer(gpus=args.gpus, max_epochs=args.num_train_epochs,
-                         logger=wandb_logger, strategy='ddp', callbacks=[lr_monitor])
-    
-    # if test model
-    if args.test_model:
-        logging.info("Running test inference")
-        trainer.test(val_loader)
-        sys.exit(0)
-
     # Train dataset
     logging.info("Loading train dataset")
     dataset = get_or_create_dataset(
         args, tokenizer, evaluate=False)
-    train_dataset = get_balanced_dataset(dataset)
     logging.info(f"Total dataset size Train: {len(dataset)}")
+    train_dataset = get_balanced_dataset(dataset)
     logging.info(f"Dataset balanced size Train: {len(train_dataset)}")
     del dataset
     gc.collect()
@@ -102,17 +82,39 @@ def main(args):
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.dataset_num_workers)
     hparams['train_set_size'] = len(train_dataset)
-    # Resetting the model to add the new hparams
+
+    # Training preparation
+    logging.info("Preparing training")
+
     litModel = PLQAModel(model, args, hparams, tokenizer)
 
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+
+    wandb_logger = WandbLogger(
+        project=args.project_name, entity="gustavhartz")
+
+    trainer = pl.Trainer(gpus=args.gpus, max_epochs=args.num_train_epochs,
+                         logger=wandb_logger, strategy='ddp', callbacks=[lr_monitor])
+    # if test model
+    if args.test_model:
+        del train_dataset
+        del train_loader
+        gc.collect()
+        logging.info("Running test inference")
+        trainer.test(litModel,val_loader)
+        sys.exit(0)
     # Training
     logging.info("Starting training")
     trainer.fit(litModel, train_loader, val_loader)
     logging.info("Training finished")
     logging.info("Saving model")
     torch.save(litModel.model,
-               f"./{args.model_name}_{args.model_type}_{args.model_version}_model.pt")
+               f"./{args.model_name}_{args.model_type}_{args.model_version}_{random_string(5)}_model.pt")
 
+
+# Function that generates random string of length n
+def random_string(n):
+    return ''.join(random.choice(string.ascii_lowercase) for i in range(n))
 
 
 
@@ -282,6 +284,9 @@ if __name__ == "__main__":
     # Test model
     argparser.add_argument('--test_model', type=bool,
                             default=False, help='Test model. This will not train the model and only run a single evaluation on the predict file using the CUAD metrics')
+    # Verbose
+    argparser.add_argument('--verbose', type=bool,
+                            default=True, help='Verbose')
 
 
     args = argparser.parse_args()
