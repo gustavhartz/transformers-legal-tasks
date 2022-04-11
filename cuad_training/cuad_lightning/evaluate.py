@@ -181,7 +181,8 @@ def get_aupr(precisions, recalls):
     return aupr
 
 
-def get_results(args, n_best_predictions_path, gt_dict):
+def get_results(args, n_best_predictions_path, gt_dict, gt_dict_extract_answers=True):
+    gt_dict = get_answers(gt_dict) if gt_dict_extract_answers else gt_dict
 
     pred_dict = load_json(n_best_predictions_path)
 
