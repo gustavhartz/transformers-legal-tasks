@@ -58,19 +58,21 @@ def main(args):
         config=config,
         cache_dir=None,
     )
-    # Delete layers if specified
+    # Delete layers if specified and add size
+    size_1 = robertaQA.num_parameters()
+    size_2 = -1
     if args.delete_transformer_layers:
         logging.info(f"Deleting transformer layers {args.delete_transformer_layers}")
-        size_1 = robertaQA.num_parameters()
         robertaQA = delete_encoding_layers(args, robertaQA)
         size_2 = robertaQA.num_parameters()
         logging.info(f"Deleted {size_1-size_2} parameters")
         # Percent decreased model size
         logging.info(f"New model size percentage of old : {int(100*size_2/size_1)}%")
-        # Free up memory
-        del size_1, size_2
+        # Free up memory from deleted layers
         gc.collect()
     
+    hparams['model_params'] = size_1 if not args.delete_transformer_layers else size_2
+    hparams['deleted_layers'] = "" if not args.delete_transformer_layers else str(args.delete_transformer_layers)
     robertaQA.train()
     model = QAModel(hparams, robertaQA)
 

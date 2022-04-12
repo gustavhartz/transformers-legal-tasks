@@ -177,7 +177,7 @@ class PLQAModel(pl.LightningModule):
     def test_epoch_end(self, outputs):
 
         DATASET_PATH = os.path.join(self.args.out_dir, self.args.dataset_name+"_" +
-                                    self.args.model_type+"_"+self.args.model_name+"_eval")
+                                    self.args.model_type+"_eval_" + self.args.predict_file_version)
         examples = torch.load(DATASET_PATH+"_examples")
         features = torch.load(DATASET_PATH+"_features")
         all_results = []
@@ -192,15 +192,14 @@ class PLQAModel(pl.LightningModule):
 
         # Generate random string for filename
         n = random.randint(0, 12034234)
-        torch.save(all_results, DATASET_PATH +
-                   f"_test_results_{n}")
+        BASE_PATH = os.path.join(self.args.out_dir, self.args.model_type + "_" + self.args.model_name +
+                                 f"_{self.args.model_version}"+f"_{n}_eval_{self.args.predict_file_version}_")
 
-        output_prediction_file = os.path.join(
-            self.args.out_dir, self.args.model_name+f"_{self.args.model_version}"+f"_epoch_{self.current_epoch}_rand{n}"+"_eval_predictions.json")
-        output_nbest_file = os.path.join(
-            self.args.out_dir, self.args.model_name+f"_{self.args.model_version}"+f"_epoch_{self.current_epoch}_rand{n}"+"_eval_nbest_predictions.json")
-        output_null_log_odds_file = os.path.join(
-            self.args.out_dir, self.args.model_name+f"_{self.args.model_version}"+f"_epoch_{self.current_epoch}_rand{n}"+"_eval_null_odds.json")
+        # Save predictions
+        torch.save(all_results, BASE_PATH + f"_test_results")
+        output_prediction_file = BASE_PATH + "predictions.json"
+        output_nbest_file = BASE_PATH + "nbest_predictions.json"
+        output_null_log_odds_file = BASE_PATH + "null_odds.json"
         with open(self.args.predict_file, "r") as f:
             json_test_dict = json.load(f)
 
