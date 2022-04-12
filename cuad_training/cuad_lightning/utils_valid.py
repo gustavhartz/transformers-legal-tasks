@@ -294,7 +294,8 @@ def get_pred_from_batch_outputs(args, batch, start_logits, end_logits, tokenizer
             is_impossible = feat.is_impossible
 
             # get answer and pred text
-            if (_start == _end == 1) or (_start == 0):
+            if (_start == _end == 1) or (_end == 0) or feat.is_impossible:
+                is_impossible = True
                 _pred_text = ""
             else:
                 _pred_text = tokenizer.decode(_pred)
