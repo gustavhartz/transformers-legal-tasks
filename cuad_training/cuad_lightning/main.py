@@ -108,8 +108,12 @@ def main(args):
     wandb_logger = WandbLogger(
         project=args.project_name, entity="gustavhartz")
 
-    trainer = pl.Trainer(gpus=args.gpus, max_epochs=args.num_train_epochs,
-                         logger=wandb_logger, strategy='ddp', callbacks=[lr_monitor])
+    gpus=args.gpus
+    if args.specify_gpus:
+        gpus=args.specify_gpus
+
+    trainer = pl.Trainer(gpus=gpus, max_epochs=args.num_train_epochs,
+                         logger=wandb_logger, strategy='ddp', callbacks=[lr_monitor], auto_select_gpus=args.auto_select_gpus)
     # if test model
     if args.test_model:
         del train_dataset
@@ -130,8 +134,6 @@ def main(args):
 # Function that generates random string of length n
 def random_string(n):
     return ''.join(random.choice(string.ascii_lowercase) for i in range(n))
-
-
 
 
 def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
@@ -308,19 +310,27 @@ if __name__ == "__main__":
     # Delete transformer layers option
     argparser.add_argument("--delete_transformer_layers", nargs='+',
                             help='Delete layers. Used like --delete_transformer_layers 9 10 11. ', type=int, default=[])
+    # Autoselect gpus
+    argparser.add_argument('--auto_select_gpus', type=bool,
+                            default=False, help='Autoselect gpus in pytorch lightning')
+    # Specify gpus
+    argparser.add_argument("--specify_gpus", nargs='+',
+                           help='Used if a specific device should be used in pl training. For using device 1 and 2 use: --specific_gpus 1 2', type=int, default=[])
+
 
 
     args = argparser.parse_args()
     if args.doc_stride >= args.max_seq_length - args.max_query_length:
-        logging.info("WARNING: - You've set a doc stride which may be superior to the document length in some "
+        logging.warning("You've set a doc stride which may be superior to the document length in some "
             "examples. This could result in errors when building features from the examples. Please reduce the doc "
             "stride or increase the maximum length to ensure the features are correctly built."
         )
     if args.test_model and not args.predict_file:
-        logging.info("WARNING: - You've set test_model to True but not provided a predict file.  Please provide a predict file or set test_model to False.")
+        logging.warning("You've set test_model to True but not provided a predict file.  Please provide a predict file or set test_model to False.")
         sys.exit(1)
-    if args.test_model and args.gpus > 1:
-        logging.info("WARNING: - You've set test_model to True but you have more than one GPU.  Testing does not work with more than one GPU.  Continuing with one GPU.")
+    if args.test_model and ((args.gpus > 1) or (len(args.specify_gpus)>1)):
+        logging.warning("You've set test_model to True but you have more than one GPU.  Testing does not work with more than one GPU.  Continuing with one unspecified GPU.")
         args.gpus = 1
+        args.specify_gpus = []
     main(args)
     
