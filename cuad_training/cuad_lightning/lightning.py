@@ -203,6 +203,7 @@ class PLQAModel(pl.LightningModule):
         with open(self.args.predict_file, "r") as f:
             json_test_dict = json.load(f)
 
+        logging.info("Calculating predictions")
         predictions = compute_predictions_logits(
             json_test_dict,
             examples,
@@ -219,9 +220,10 @@ class PLQAModel(pl.LightningModule):
             self.args.null_score_diff_threshold,
             self.tokenizer,
         )
-
+        logging.info("Evaluating predictions")
         # Handle results
         results = squad_evaluate(examples, predictions)
+        logging.info("Getting results")
         res = get_results(self.args, output_nbest_file, gt_dict=json_test_dict)
 
         if self.args.verbose:
