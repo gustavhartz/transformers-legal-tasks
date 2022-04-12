@@ -173,9 +173,9 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
 
 def get_or_create_dataset(args, tokenizer, evaluate=False):
     dataset = None
-    DATASET_NAME = args.dataset_name+"_"+args.model_type+"_"+args.model_name
+    DATASET_NAME = args.dataset_name+"_"+args.model_type
     dataset_path = os.path.join(
-        args.out_dir, DATASET_NAME+"_eval" if evaluate else DATASET_NAME+"_train")
+        args.out_dir, DATASET_NAME + "_eval_" + args.predict_file_version if evaluate else DATASET_NAME + "_train")
     if args.cached_data and os.path.exists(dataset_path+"_dataset"):
         # Load dataset from cache if it exists
         dataset= torch.load(dataset_path+"_dataset")
@@ -248,6 +248,9 @@ if __name__ == "__main__":
     # Predict file
     argparser.add_argument('--predict_file', type=str,
                            default='../../data/test.json', help='Predict file')
+    # Predict file type
+    argparser.add_argument('--predict_file_version', type=str,
+                            default='test', help='Predict file version. This is used to determine the output file name as we have different versions of the test file')
     # Out dir
     argparser.add_argument('--out_dir', type=str,
                            default='./out', help='Out dir')
