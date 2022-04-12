@@ -138,6 +138,7 @@ cuad_training/*.model
 cuad_training/bert-cuad
 cuad_training/BERT/data/*
 cuad_training/RoBERTa/data/*
+cuad_training/cuad_lightning/out/*
 !cuad_training/BERT/data/.gitkeep
 !cuad_training/RoBERTa/data/.gitkeep
 data/
