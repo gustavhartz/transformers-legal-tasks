@@ -6,6 +6,7 @@ import math
 import json
 import collections
 import torch
+import copy
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -677,3 +678,32 @@ def compute_predictions_logits(
             writer.write(json.dumps(scores_diff_json, indent=4) + "\n")
 
     return all_predictions
+
+
+def delete_encoding_layers(args, model):
+    """Delete some of the encoding layers of the model.
+
+    Args:
+        args (_type_): The training argparse object.
+        model (_type_): transformer/pytorch model
+
+    Returns:
+        _type_: copy of model with deleted layers.
+    """
+    del_set = set(args.delete_transformer_layers)
+    oldModuleList = getattr(model, args.model_type).encoder.layer
+    newModuleList = torch.nn.ModuleList()
+
+    # Now iterate over all layers, only keepign only the relevant layers.
+    for idx in range(len(oldModuleList)):
+        if idx not in del_set:
+            newModuleList.append(oldModuleList[idx])
+        else:
+            if args.verbose:
+                print("Deleted layer: ", idx)
+
+    # create a copy of the model, modify it with the new list, and return
+    copyOfModel = copy.deepcopy(model)
+    getattr(copyOfModel, args.model_type).encoder.layer = newModuleList
+
+    return copyOfModel

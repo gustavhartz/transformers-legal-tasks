@@ -16,6 +16,7 @@ import logging
 import gc
 import sys
 import string
+from utils import delete_encoding_layers
 
 logging.basicConfig(
         format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -57,6 +58,18 @@ def main(args):
         config=config,
         cache_dir=None,
     )
+    # Delete layers if specified
+    if args.delete_transformer_layers:
+        logging.info(f"Deleting transformer layers {args.delete_transformer_layers}")
+        size_1 = robertaQA.num_parameters()
+        robertaQA = delete_encoding_layers(args, robertaQA)
+        size_2 = robertaQA.num_parameters()
+        logging.info(f"Deleted {size_1-size_2} parameters")
+        # Percent decreased model size
+        logging.info(f"New model size percentage of old : {int(100*size_2/size_1)}%")
+        # Free up memory
+        del size_1, size_2
+        gc.collect()
     
     robertaQA.train()
     model = QAModel(hparams, robertaQA)
@@ -290,6 +303,9 @@ if __name__ == "__main__":
     # Verbose
     argparser.add_argument('--verbose', type=bool,
                             default=True, help='Verbose')
+    # Delete transformer layers option
+    argparser.add_argument("--delete_transformer_layers", nargs='+',
+                            help='Delete layers. Used like --delete_transformer_layers 9 10 11. ', type=int, default=[])
 
 
     args = argparser.parse_args()
