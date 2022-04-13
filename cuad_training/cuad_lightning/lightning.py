@@ -102,7 +102,8 @@ class PLQAModel(pl.LightningModule):
             )
         else:
             if self.val_has_loss:
-                logging.critical("Validation did not return loss")
+                logging.critical(
+                    "Validation did not return loss because start_positions and end_positions are not provided")
                 self.val_has_loss = False
 
             loss = 0
@@ -111,39 +112,55 @@ class PLQAModel(pl.LightningModule):
 
         top_k_preds = get_pred_from_batch_outputs(
             self.args, batch, s_l, e_l, self.tokenizer)
+        # If on main process log text examples
+        if self.trainer.is_global_zero and (random.randint(0, 100) != 0):
+
+            columns = ['id', 'top_k_id', 'is_impossible', 'prediction', 'answer',
+                       'confidence', 'start_token_pos', 'end_token_pos', 'feature_index']
+            flattend_results = [
+                y for x in top_k_preds for y in x if y.answer_text or y.pred_text]
+            self.logger.log_text(
+                key='valid_pred_sample', columns=columns, data=flattend_results)
+
         rs = compute_top_1_scores_from_preds(top_k_preds)
-        self.log(
-            "performance",
-            rs,
-        )
 
         return {'loss': loss, 'start_logits': s_l, 'feature_indices': feature_indices, 'end_logits': e_l, 'metrics': rs}
 
     def validation_epoch_end(self, outputs):
-        ct_batch, ct_total, _sum = 0, 0, 0
-        em_sum, f1_sum = 0, 0
-        for pred in outputs:
-            _sum += pred['loss'].item() if type(pred['loss']
-                                                ) != int else pred['loss']
-            em_sum += pred['metrics']['em']
-            f1_sum += pred['metrics']['f1']
-            ct_batch += 1
-            ct_total += pred['metrics']['batch_len']
-        self.log(
-            "epoch_val_loss",
-            _sum / ct_batch,
-            sync_dist=True
-        )
-        self.log(
-            "epoch_val_f1",
-            f1_sum / ct_batch,
-            sync_dist=True
-        )
-        self.log(
-            "epoch_val_em",
-            em_sum / ct_total,
-            sync_dist=True
-        )
+        if self.trainer.is_global_zero:
+            ct_batch, ct_total, _sum = 0, 0, 0
+            em_sum, f1_sum = 0, 0
+            tp, fp, fn, tn = 0, 0, 0, 0
+            for pred in outputs:
+                _sum += pred['loss'].item() if type(pred['loss']
+                                                    ) != int else pred['loss']
+                em_sum += pred['metrics']['em']
+                f1_sum += pred['metrics']['f1']
+                ct_batch += 1
+                ct_total += pred['metrics']['batch_len']
+
+                tp += pred['metrics']['tp']
+                fp += pred['metrics']['fp']
+                fn += pred['metrics']['fn']
+                tn += pred['metrics']['tn']
+
+            performance_stats = {
+                'tp': int(100*tp/ct_total),
+                'fp': int(100*fp/ct_total),
+                'fn': int(100*fn/ct_total),
+                'tn': int(100*tn/ct_total),
+                'recall': int(100*tp/(tp+fn)),
+                'precision': int(100*tp/(tp+fp)),
+                'observations': ct_total,
+                'em': int(100*em_sum/ct_total),
+                'f1_batch': int(100*f1_sum/ct_batch),
+                'f1_total': int(100*f1_sum/ct_total),
+                'val_loss': _sum / ct_batch,
+            }
+            self.log(
+                "performance_stats_val",
+                performance_stats,
+            )
 
     def test_step(self, batch, batch_idx):
         inputs = {
@@ -221,6 +238,7 @@ class PLQAModel(pl.LightningModule):
             self.tokenizer,
         )
         logging.info("Evaluating predictions")
+        torch.save(predictions, BASE_PATH + f"_test_predictions")
         # Handle results
         results = squad_evaluate(examples, predictions)
         logging.info("Getting results")
@@ -231,11 +249,11 @@ class PLQAModel(pl.LightningModule):
             print(results)
             print(res)
 
-        for k, v in results.items():
-            self.log("test_" + k, v)
-        self.log("test_AUPR", res.get('aupr', 0))
-        self.log("test_prec_at_80_recall", res.get('prec_at_80_recall', 0))
-        self.log("test_prec_at_90_recall", res.get('prec_at_90_recall', 0))
+        self.log(
+            "test",
+            results
+        )
+        self.log("test", res)
 
     def setup(self, stage=None) -> None:
         if stage != "fit":

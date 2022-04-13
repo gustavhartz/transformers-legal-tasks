@@ -7,6 +7,7 @@ import torch
 import copy
 import numpy as np
 import os
+from collections import namedtuple
 
 
 def normalize_answer(s):
@@ -184,7 +185,7 @@ def compute_top_1_scores_from_preds(predictions, iou_threshold=0.5, include_df=F
     for prediction_set in predictions:
 
         # Currently only top 1
-        _id, top_k_idx, is_impossible, _pred_text, answer, confidence, start_loc_pred, end_loc_pred = prediction_set[
+        _id, top_k_idx, is_impossible, _pred_text, answer, confidence, start_loc_pred, end_loc_pred, feature_index = prediction_set[
             0]
         _tmp_df = copy.copy(df_struct)
 
@@ -242,6 +243,14 @@ def compute_top_1_scores_from_preds(predictions, iou_threshold=0.5, include_df=F
     return res
 
 
+def feature_path(args, feature_index):
+    """Generates the feature path and prefix for the given args. Combine with the feature_path_and_prefix function."""
+    DATASET_NAME = args.dataset_name+"_"+args.model_type
+    dataset_path = os.path.join(
+        args.out_dir, "features", DATASET_NAME + "_eval_" + args.predict_file_version + f"_{feature_index}_features_validation")
+    return dataset_path
+
+
 def get_pred_from_batch_outputs(args, batch, start_logits, end_logits, tokenizer, top_k=2, max_ans_len=200) -> List[List[Tuple]]:
     """Takes as input the batch and the outputs of the model and returns the predictions
 
@@ -257,7 +266,10 @@ def get_pred_from_batch_outputs(args, batch, start_logits, end_logits, tokenizer
     Returns:
         List[List[Tuple]]: Batch x Top k predictions x (id, idx_top_k , is_impossible ,_pred_text,_answer_text,confidence, _start, _end)
     """
-
+    _PrelimPrediction = namedtuple(  # pylint: disable=invalid-name
+        "PrelimPrediction", ["feature_unique_id", "top_k_idx", "is_impossible",
+                             "pred_text", "answer_text", "confidence", "start_index", "end_index", "feature_index"]
+    )
     # Get logits
     start_ = start_logits.detach()
     end_ = end_logits.detach()
@@ -279,8 +291,7 @@ def get_pred_from_batch_outputs(args, batch, start_logits, end_logits, tokenizer
         # Top k
         temp_collect = []
         # Each single predictions
-        feat = torch.load(os.path.join(args.out_dir, "features",
-                          f"{feat_ind[i]}_features_validation"))
+        feat = torch.load(feature_path(args, feat_ind[i]))
         for idx, _v in enumerate(zip(ele[0], ele[1])):
             _start, _end = _v
             _pred = batch[0][i][_start:_end+1]
@@ -305,8 +316,19 @@ def get_pred_from_batch_outputs(args, batch, start_logits, end_logits, tokenizer
             else:
                 _answer_text = tokenizer.decode(_answer)
 
-            temp_collect.append((_id, idx, is_impossible,
-                                _pred_text, _answer_text, confidence, _start, _end))
+            temp_collect.append(
+                _PrelimPrediction(
+                    feature_unique_id=_id,
+                    top_k_idx=idx,
+                    is_impossible=is_impossible,
+                    pred_text=_pred_text,
+                    answer_text=_answer_text,
+                    confidence=confidence,
+                    start_index=_start,
+                    end_index=_end,
+                    feature_index=i
+                )
+            )
         predictions.append(temp_collect)
         i += 1
     return predictions

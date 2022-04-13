@@ -17,7 +17,7 @@ import gc
 import sys
 import string
 from utils import delete_encoding_layers
-
+from utils_valid import feature_path
 logging.basicConfig(
         format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
         level=logging.INFO,
@@ -120,7 +120,7 @@ def main(args):
         del train_loader
         gc.collect()
         logging.info("Running test inference")
-        trainer.test(litModel,val_loader)
+        trainer.validate(litModel,val_loader)
         sys.exit(0)
     # Training
     logging.info("Starting training")
@@ -175,7 +175,7 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
             os.mkdir(os.path.join(args.out_dir, "features"))
         # dump features to file
         for idx, feature in enumerate(features):
-            torch.save(feature, os.path.join(args.out_dir, "features", f"{idx}_features_validation"))
+            torch.save(feature, feature_path(args,idx))
         logging.info(f"Saved the individual feature list files")
     torch.save(features, dataset_path+"_features")
     logging.info(f"Saved toal feature list")
