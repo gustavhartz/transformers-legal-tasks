@@ -120,7 +120,7 @@ def main(args):
         del train_loader
         gc.collect()
         logging.info("Running test inference")
-        trainer.validate(litModel,val_loader)
+        trainer.test(litModel,val_loader)
         sys.exit(0)
     # Training
     logging.info("Starting training")
