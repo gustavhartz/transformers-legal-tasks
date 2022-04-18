@@ -13,6 +13,7 @@ from utils_valid import (get_pred_from_batch_outputs,
                          compute_top_1_scores_from_preds)
 import logging
 import random
+from tqdm import tqdm
 logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
     level=logging.INFO,
@@ -127,40 +128,37 @@ class PLQAModel(pl.LightningModule):
         return {'loss': loss, 'start_logits': s_l, 'feature_indices': feature_indices, 'end_logits': e_l, 'metrics': rs}
 
     def validation_epoch_end(self, outputs):
-        if self.trainer.is_global_zero:
-            ct_batch, ct_total, _sum = 0, 0, 0
-            em_sum, f1_sum = 0, 0
-            tp, fp, fn, tn = 0, 0, 0, 0
-            for pred in outputs:
-                _sum += pred['loss'].item() if type(pred['loss']
-                                                    ) != int else pred['loss']
-                em_sum += pred['metrics']['em']
-                f1_sum += pred['metrics']['f1']
-                ct_batch += 1
-                ct_total += pred['metrics']['batch_len']
+        ct_batch, ct_total = 0, 0
+        em_sum, f1_sum = 0, 0
+        tp, fp, fn, tn = 0, 0, 0, 0
+        for pred in tqdm(outputs, desc=f"Processing validation outputs on rank {self.global_rank}", leave=False):
+            em_sum += pred['metrics']['em']
+            f1_sum += pred['metrics']['f1']
+            ct_batch += 1
+            ct_total += pred['metrics']['batch_len']
 
-                tp += pred['metrics']['tp']
-                fp += pred['metrics']['fp']
-                fn += pred['metrics']['fn']
-                tn += pred['metrics']['tn']
+            tp += pred['metrics']['tp']
+            fp += pred['metrics']['fp']
+            fn += pred['metrics']['fn']
+            tn += pred['metrics']['tn']
 
-            performance_stats = {
-                'tp': int(100*tp/ct_total),
-                'fp': int(100*fp/ct_total),
-                'fn': int(100*fn/ct_total),
-                'tn': int(100*tn/ct_total),
-                'recall': int(100*tp/(tp+fn)),
-                'precision': int(100*tp/(tp+fp)),
-                'observations': ct_total,
-                'em': int(100*em_sum/ct_total),
-                'f1_batch': int(100*f1_sum/ct_batch),
-                'f1_total': int(100*f1_sum/ct_total),
-                'val_loss': _sum / ct_batch,
-            }
-            self.log(
-                "performance_stats_val",
-                performance_stats,
-            )
+        performance_stats = {
+            'tp': int(100*tp/ct_total),
+            'fp': int(100*fp/ct_total),
+            'fn': int(100*fn/ct_total),
+            'tn': int(100*tn/ct_total),
+            'recall': int(100*tp/(tp+fn)) if (tp+fn) > 0 else 0,
+            'precision': int(100*tp/(tp+fp)) if (tp+fp) > 0 else 0,
+            'observations': ct_total,
+            'em': int(100*em_sum/ct_total),
+            'f1_batch': int(100*f1_sum/ct_batch),
+            'f1_total': int(100*f1_sum/ct_total),
+        }
+        self.log(
+            "performance_stats_val",
+            performance_stats,
+            rank_zero_only=True
+        )
 
     def test_step(self, batch, batch_idx):
         inputs = {
