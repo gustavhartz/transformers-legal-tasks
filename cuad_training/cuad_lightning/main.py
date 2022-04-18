@@ -231,7 +231,7 @@ if __name__ == "__main__":
                            default=768, help='Hidden size')
     # Number of train epochs
     argparser.add_argument('--num_train_epochs', type=int,
-                           default=20, help='Number of train epochs')
+                           default=5, help='Number of train epochs')
     # Log text every n batch
     argparser.add_argument('--log_text_every_n_batch',
                            type=int, default=30, help='Log text every n batch')

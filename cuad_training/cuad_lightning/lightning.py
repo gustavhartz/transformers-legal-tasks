@@ -143,10 +143,10 @@ class PLQAModel(pl.LightningModule):
             tn += pred['metrics']['tn']
 
         performance_stats = {
-            'tp': int(100*tp/ct_total),
-            'fp': int(100*fp/ct_total),
-            'fn': int(100*fn/ct_total),
-            'tn': int(100*tn/ct_total),
+            'tp': tp,
+            'fp': fp,
+            'fn': fn,
+            'tn': tn,
             'recall': int(100*tp/(tp+fn)) if (tp+fn) > 0 else 0,
             'precision': int(100*tp/(tp+fp)) if (tp+fp) > 0 else 0,
             'observations': ct_total,
