@@ -103,6 +103,11 @@ def main(args):
 
     litModel = PLQAModel(model, args, hparams, tokenizer)
 
+    # Load pytorch lightning model
+    if args.lit_model_path:
+        litModel.model = torch.load(args.lit_model_path)
+        logging.info(f"Loaded model from {args.lit_model_path}")
+
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     wandb_logger = WandbLogger(
@@ -113,18 +118,21 @@ def main(args):
         gpus=args.specify_gpus
 
     trainer = pl.Trainer(gpus=gpus, max_epochs=args.num_train_epochs,
-                         logger=wandb_logger, strategy='ddp', callbacks=[lr_monitor], auto_select_gpus=args.auto_select_gpus)
+                         logger=wandb_logger, 
+                         strategy='ddp', 
+                         callbacks=[lr_monitor], 
+                         auto_select_gpus=args.auto_select_gpus)
     # if test model
     if args.test_model:
         del train_dataset
         del train_loader
         gc.collect()
         logging.info("Running test inference")
-        trainer.test(litModel,val_loader)
+        trainer.test(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
         sys.exit(0)
     # Training
     logging.info("Starting training")
-    trainer.fit(litModel, train_loader, val_loader)
+    trainer.fit(litModel, train_loader, val_loader, ckpt_path=args.resume_from_pl_checkpoint)
     logging.info("Training finished")
     logging.info("Saving model")
     torch.save(litModel.model,
@@ -316,8 +324,12 @@ if __name__ == "__main__":
     # Specify gpus
     argparser.add_argument("--specify_gpus", nargs='+',
                            help='Used if a specific device should be used in pl training. For using device 1 and 2 use: --specific_gpus 1 2', type=int, default=[])
-
-
+    # Resume from checkpoint
+    argparser.add_argument('--resume_from_pl_checkpoint', type=str, 
+                            default=None, help='Path to pytorch lightning checkpoint')
+    # Pytorch model load
+    argparser.add_argument('--lit_model_path', type=str,
+                            default=None, help='Path to pytorch model')
 
     args = argparser.parse_args()
     if args.doc_stride >= args.max_seq_length - args.max_query_length:
