@@ -97,6 +97,7 @@ def main(args):
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.dataset_num_workers)
     hparams['train_set_size'] = len(train_dataset)
+    hparams['val_set_size'] = len(valid_dataset)
 
     # Training preparation
     logging.info("Preparing training")
@@ -128,7 +129,7 @@ def main(args):
         del train_loader
         gc.collect()
         logging.info("Running test inference")
-        trainer.test(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
+        trainer.validate(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
         sys.exit(0)
     # Training
     logging.info("Starting training")

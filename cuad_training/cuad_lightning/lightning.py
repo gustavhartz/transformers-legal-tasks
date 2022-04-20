@@ -114,7 +114,12 @@ class PLQAModel(pl.LightningModule):
         top_k_preds = get_pred_from_batch_outputs(
             self.args, batch, s_l, e_l, self.tokenizer)
         # If on main process log text examples
-        if self.trainer.is_global_zero and (random.randint(0, 100) != 0):
+        # 2 times each epoch approx
+        rand_lim = ((self.hparams.get('val_set_size',
+                                      5000) / max(self.args.gpus, 1)) / self.hparams.batch_size) / 2
+        log_text = (random.randint(0, rand_lim) == 0)
+
+        if self.trainer.is_global_zero and log_text:
 
             columns = ['id', 'top_k_id', 'is_impossible', 'prediction', 'answer',
                        'confidence', 'start_token_pos', 'end_token_pos', 'feature_index']
@@ -211,7 +216,7 @@ class PLQAModel(pl.LightningModule):
                                  f"_{self.args.model_version}"+f"_{n}_eval_{self.args.predict_file_version}_")
 
         # Save predictions
-        torch.save(all_results, BASE_PATH + f"_test_results")
+        torch.save(all_results, BASE_PATH + f"test_results")
         output_prediction_file = BASE_PATH + "predictions.json"
         output_nbest_file = BASE_PATH + "nbest_predictions.json"
         output_null_log_odds_file = BASE_PATH + "null_odds.json"
@@ -235,12 +240,14 @@ class PLQAModel(pl.LightningModule):
             self.args.null_score_diff_threshold,
             self.tokenizer,
         )
+        logging.info("Saving predictions")
+        torch.save(predictions, BASE_PATH + f"test_predictions")
         logging.info("Evaluating predictions")
-        torch.save(predictions, BASE_PATH + f"_test_predictions")
         # Handle results
         results = squad_evaluate(examples, predictions)
         logging.info("Getting results")
-        res = get_results(self.args, output_nbest_file, gt_dict=json_test_dict)
+        res = get_results(self.args, output_nbest_file,
+                          gt_dict=json_test_dict, include_model_info=False)
 
         if self.args.verbose:
             logging.info("***** Eval results *****")
@@ -248,10 +255,10 @@ class PLQAModel(pl.LightningModule):
             print(res)
 
         self.log(
-            "test",
+            "performance_stats_test",
             results
         )
-        self.log("test", res)
+        self.log("performance_AUPR_test", res)
 
     def setup(self, stage=None) -> None:
         if stage != "fit":
