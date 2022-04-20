@@ -181,7 +181,7 @@ def get_aupr(precisions, recalls):
     return aupr
 
 
-def get_results(args, n_best_predictions_path, gt_dict, gt_dict_extract_answers=True):
+def get_results(args, n_best_predictions_path, gt_dict, gt_dict_extract_answers=True, include_model_info=True):
     gt_dict = get_answers(gt_dict) if gt_dict_extract_answers else gt_dict
 
     pred_dict = load_json(n_best_predictions_path)
@@ -198,4 +198,7 @@ def get_results(args, n_best_predictions_path, gt_dict, gt_dict_extract_answers=
     # now save results as a dataframe and return
     results = {"name": args.model_name, "version": args.model_version, "aupr": aupr, "prec_at_80_recall": prec_at_80_recall,
                "prec_at_90_recall": prec_at_90_recall}
+    if not include_model_info:
+        del results["name"]
+        del results["version"]
     return results
