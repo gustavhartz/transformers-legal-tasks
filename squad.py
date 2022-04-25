@@ -395,7 +395,7 @@ def squad_convert_examples_to_features(
         )
         features = list(
             tqdm(
-                p.imap(annotate_, examples, chunksize=4),
+                p.imap(annotate_, examples, chunksize=16),
                 total=len(examples),
                 desc="convert squad examples to features",
                 disable=not tqdm_enabled,
