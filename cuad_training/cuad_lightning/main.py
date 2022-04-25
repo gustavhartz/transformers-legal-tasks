@@ -129,7 +129,7 @@ def main(args):
         del train_loader
         gc.collect()
         logging.info("Running test inference")
-        trainer.validate(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
+        trainer.test(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
         sys.exit(0)
     # Training
     logging.info("Starting training")
@@ -151,12 +151,10 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
     if load_data:
         logging.info("Using cached examples")
         examples = torch.load(dataset_path+"_examples")
-    elif evaluate:
-        examples = processor.get_dev_examples(
-        None, filename=args.predict_file)
-    else:
-        examples = processor.get_train_examples(
-            None, filename=args.train_file)
+    # Use train processor on both train and valid for getting validation loss
+    filename = args.predict_file if evaluate else args.train_file
+    examples = processor.get_train_examples(
+            None, filename=filename)
     if not load_data:
         logging.info("Saving examples...")
         torch.save(examples, dataset_path+"_examples")
@@ -169,10 +167,13 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
         max_seq_length=args.max_seq_length,
         doc_stride=args.doc_stride,
         max_query_length=args.max_query_length,
-        is_training=not evaluate,
+        is_training=True,
         return_dataset="pt",
         threads=args.dataset_creation_threads
         )
+    # Assert that we are using the custom dataset with the feature indexes
+    assert len(dataset[0]) == 9, "Dataset is not the correct size. Did you remember to use the customs squad.py file in transformers?"
+
     # Free up memory
     del examples
     gc.collect()
@@ -183,14 +184,16 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
         if not os.path.exists(os.path.join(args.out_dir, "features")):
             os.mkdir(os.path.join(args.out_dir, "features"))
         # dump features to file
+        logging.info(f"Saving the individual features to {os.path.join(args.out_dir, 'features')}")
         for idx, feature in enumerate(features):
             torch.save(feature, feature_path(args,idx))
         logging.info(f"Saved the individual feature list files")
+    logging.info("Saving features to cache file")
     torch.save(features, dataset_path+"_features")
-    logging.info(f"Saved toal feature list")
     # Free up memory
     del features
     gc.collect()
+    logging.info("Saving dataset to cache file")
     torch.save(dataset, dataset_path+"_dataset")
     #Print stuff saved
     logging.info(f"Saved dataset, features, and examples to: {dataset_path}")
@@ -201,7 +204,7 @@ def get_or_create_dataset(args, tokenizer, evaluate=False):
     dataset = None
     DATASET_NAME = args.dataset_name+"_"+args.model_type
     dataset_path = os.path.join(
-        args.out_dir, DATASET_NAME + "_eval_" + args.predict_file_version if evaluate else DATASET_NAME + "_train")
+        args.out_dir, DATASET_NAME + "_eval_" + args.predict_file_version if evaluate else DATASET_NAME + "_train_" + args.train_file_version)
     if args.cached_data and os.path.exists(dataset_path+"_dataset"):
         # Load dataset from cache if it exists
         dataset= torch.load(dataset_path+"_dataset")
@@ -277,6 +280,9 @@ if __name__ == "__main__":
     # Predict file type
     argparser.add_argument('--predict_file_version', type=str,
                             default='test', help='Predict file version. This is used to determine the output file name as we have different versions of the test file')
+    # Train file type
+    argparser.add_argument('--train_file_version', type=str,
+                            default='train', help='Train file version. This is used to determine the output file name as we have different versions of the train file')
     # Out dir
     argparser.add_argument('--out_dir', type=str,
                            default='./out', help='Out dir')

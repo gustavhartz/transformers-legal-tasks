@@ -84,8 +84,10 @@ class PLQAModel(pl.LightningModule):
             "input_ids": batch[0],
             "attention_mask": batch[1],
             "token_type_ids": batch[2],
+            "start_positions": batch[3],
+            "end_positions": batch[4],
         }
-        feature_indices = batch[3]
+        feature_indices = batch[-1]
 
         if self.args.model_type in ["xlm", "roberta", "distilbert", "camembert", "bart", "longformer"]:
             del inputs["token_type_ids"]
@@ -117,6 +119,11 @@ class PLQAModel(pl.LightningModule):
         # 2 times each epoch approx
         rand_lim = ((self.hparams.get('val_set_size',
                                       5000) / max(self.args.gpus, 1)) / self.hparams.batch_size) / 2
+        try:
+            rand_lim = int(rand_lim)
+        except Exception:
+            rand_lim = 5000
+
         log_text = (random.randint(0, rand_lim) == 0)
 
         if self.trainer.is_global_zero and log_text:
@@ -134,9 +141,10 @@ class PLQAModel(pl.LightningModule):
 
     def validation_epoch_end(self, outputs):
         ct_batch, ct_total = 0, 0
-        em_sum, f1_sum = 0, 0
+        em_sum, f1_sum, _loss_sum = 0, 0, 0
         tp, fp, fn, tn = 0, 0, 0, 0
-        for pred in tqdm(outputs, desc=f"Processing validation outputs on rank {self.global_rank}", leave=False):
+        for pred in outputs:
+            _loss_sum += pred['loss'].item()
             em_sum += pred['metrics']['em']
             f1_sum += pred['metrics']['f1']
             ct_batch += 1
@@ -147,31 +155,36 @@ class PLQAModel(pl.LightningModule):
             fn += pred['metrics']['fn']
             tn += pred['metrics']['tn']
 
+        self.log(
+            "epoch_valid_loss",
+            _loss_sum / ct_batch,
+            sync_dist=True
+        )
+
         performance_stats = {
-            'tp': tp,
-            'fp': fp,
-            'fn': fn,
-            'tn': tn,
+            'tp': tp if tp else -1,
+            'fp': fp if fp else -1,
+            'fn': fn if fn else -1,
+            'tn': tn if tn else -1,
             'recall': int(100*tp/(tp+fn)) if (tp+fn) > 0 else 0,
             'precision': int(100*tp/(tp+fp)) if (tp+fp) > 0 else 0,
-            'observations': ct_total,
+            'observations': ct_total if ct_total else -1,
             'em': int(100*em_sum/ct_total),
             'f1_batch': int(100*f1_sum/ct_batch),
             'f1_total': int(100*f1_sum/ct_total),
         }
-        self.log(
-            "performance_stats_val",
-            performance_stats,
-            rank_zero_only=True
-        )
+        for k, v in performance_stats.items():
+            self.log("performance_stat_"+k, v, rank_zero_only=True)
 
     def test_step(self, batch, batch_idx):
         inputs = {
             "input_ids": batch[0],
             "attention_mask": batch[1],
             "token_type_ids": batch[2],
+            "start_positions": batch[3],
+            "end_positions": batch[4],
         }
-        feature_indices = batch[3]
+        feature_indices = batch[-1]
 
         if self.args.model_type in ["xlm", "roberta", "distilbert", "camembert", "bart", "longformer"]:
             del inputs["token_type_ids"]
@@ -254,11 +267,11 @@ class PLQAModel(pl.LightningModule):
             print(results)
             print(res)
 
-        self.log(
-            "performance_stats_test",
-            results
-        )
-        self.log("performance_AUPR_test", res)
+        for k, v in results.items():
+            self.log("performance_stats_test"+k, v)
+
+        for k, v in res.items():
+            self.log("performance_AUPR_test"+k, v)
 
     def setup(self, stage=None) -> None:
         if stage != "fit":
