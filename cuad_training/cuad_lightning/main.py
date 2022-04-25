@@ -171,14 +171,8 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
         return_dataset="pt",
         threads=args.dataset_creation_threads
         )
-    print(f"Dataset size {len(dataset)}")
-
     # Assert that we are using the custom dataset with the feature indexes
-    try:
-        assert len(dataset) == 9
-    except:
-        raise Exception("Dataset is not the correct size. Did you remember to use the customs squad.py file in transformers?")
-
+    assert len(dataset[0]) == 9, "Dataset is not the correct size. Did you remember to use the customs squad.py file in transformers?"
 
     # Free up memory
     del examples
