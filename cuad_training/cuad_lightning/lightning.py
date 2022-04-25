@@ -84,8 +84,10 @@ class PLQAModel(pl.LightningModule):
             "input_ids": batch[0],
             "attention_mask": batch[1],
             "token_type_ids": batch[2],
+            "start_positions": batch[3],
+            "end_positions": batch[4],
         }
-        feature_indices = batch[3]
+        feature_indices = batch[-1]
 
         if self.args.model_type in ["xlm", "roberta", "distilbert", "camembert", "bart", "longformer"]:
             del inputs["token_type_ids"]
@@ -134,9 +136,10 @@ class PLQAModel(pl.LightningModule):
 
     def validation_epoch_end(self, outputs):
         ct_batch, ct_total = 0, 0
-        em_sum, f1_sum = 0, 0
+        em_sum, f1_sum, _loss_sum = 0, 0, 0
         tp, fp, fn, tn = 0, 0, 0, 0
-        for pred in tqdm(outputs, desc=f"Processing validation outputs on rank {self.global_rank}", leave=False):
+        for pred in outputs:
+            _loss_sum += pred['loss'].item()
             em_sum += pred['metrics']['em']
             f1_sum += pred['metrics']['f1']
             ct_batch += 1
@@ -146,6 +149,12 @@ class PLQAModel(pl.LightningModule):
             fp += pred['metrics']['fp']
             fn += pred['metrics']['fn']
             tn += pred['metrics']['tn']
+
+        self.log(
+            "epoch_valid_loss",
+            _loss_sum / ct_batch,
+            sync_dist=True
+        )
 
         performance_stats = {
             'tp': tp,
@@ -170,8 +179,10 @@ class PLQAModel(pl.LightningModule):
             "input_ids": batch[0],
             "attention_mask": batch[1],
             "token_type_ids": batch[2],
+            "start_positions": batch[3],
+            "end_positions": batch[4],
         }
-        feature_indices = batch[3]
+        feature_indices = batch[-1]
 
         if self.args.model_type in ["xlm", "roberta", "distilbert", "camembert", "bart", "longformer"]:
             del inputs["token_type_ids"]
