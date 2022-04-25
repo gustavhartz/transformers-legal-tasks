@@ -273,7 +273,7 @@ def get_pred_from_batch_outputs(args, batch, start_logits, end_logits, tokenizer
     # Get logits
     start_ = start_logits.detach()
     end_ = end_logits.detach()
-    feat_ind = batch[3].detach()
+    feat_ind = batch[-1].detach()
     # Normalise
     start_ = torch.exp(
         start_ - torch.log(torch.sum(torch.exp(start_), axis=-1, keepdims=True)))
