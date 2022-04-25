@@ -267,11 +267,11 @@ class PLQAModel(pl.LightningModule):
             print(results)
             print(res)
 
-        self.log(
-            "performance_stats_test",
-            results
-        )
-        self.log("performance_AUPR_test", res)
+        for k, v in results.items():
+            self.log("performance_stats_test"+k, v)
+
+        for k, v in res.items():
+            self.log("performance_AUPR_test"+k, v)
 
     def setup(self, stage=None) -> None:
         if stage != "fit":
