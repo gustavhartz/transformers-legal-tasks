@@ -232,9 +232,6 @@ if __name__ == "__main__":
     # Batch size
     argparser.add_argument('--batch_size', type=int,
                            default=8, help='Batch size')
-    # Number of workers
-    argparser.add_argument('--num_workers', type=int,
-                           default=5, help='Number of workers')
     # Number of labels
     argparser.add_argument('--num_labels', type=int,
                            default=2, help='Number of labels')
