@@ -93,28 +93,11 @@ class PLQAModel(pl.LightningModule):
             del inputs["token_type_ids"]
 
         outputs = self.model(**inputs)
-        if len(outputs) == 3:
-            loss = outputs[0]
-            s_l = outputs[1]
-            e_l = outputs[2]
-
-            self.log(
-                "valid_loss",
-                loss,
-                sync_dist=True
-            )
-        else:
-            if self.val_has_loss:
-                logging.critical(
-                    "Validation did not return loss because start_positions and end_positions are not provided")
-                self.val_has_loss = False
-
-            loss = 0
-            s_l = outputs[0]
-            e_l = outputs[1]
+        loss = outputs[0]
+        self.log("valid_loss", loss, sync_dist=True)
 
         top_k_preds = get_pred_from_batch_outputs(
-            self.args, batch, s_l, e_l, self.tokenizer)
+            self.args, batch, outputs[1], outputs[2], self.tokenizer)
         # If on main process log text examples
         # 2 times each epoch approx
         rand_lim = ((self.hparams.get('val_set_size',
