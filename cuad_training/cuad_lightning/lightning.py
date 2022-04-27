@@ -94,6 +94,8 @@ class PLQAModel(pl.LightningModule):
 
         outputs = self.model(**inputs)
         loss = outputs[0]
+        s_l = outputs[1]
+        e_l = outputs[2]
         self.log("valid_loss", loss, sync_dist=True)
 
         top_k_preds = get_pred_from_batch_outputs(
@@ -173,20 +175,15 @@ class PLQAModel(pl.LightningModule):
             del inputs["token_type_ids"]
 
         outputs = self.model(**inputs)
-        if len(outputs) == 3:
-            loss = outputs[0]
-            s_l = outputs[1]
-            e_l = outputs[2]
+        loss = outputs[0]
+        s_l = outputs[1]
+        e_l = outputs[2]
 
-            self.log(
-                "test_loss",
-                loss,
-                sync_dist=True
-            )
-        else:
-            loss = 0
-            s_l = outputs[0]
-            e_l = outputs[1]
+        self.log(
+            "test_loss",
+            loss,
+            sync_dist=True
+        )
 
         return {'loss': loss, 'start_logits': s_l, 'feature_indices': feature_indices, 'end_logits': e_l}
 
