@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from transformers import AutoTokenizer, AutoConfig, AutoModelForQuestionAnswering, SquadV2Processor, squad_convert_examples_to_features
 import random
 import numpy as np
@@ -110,6 +110,20 @@ def main(args):
         logging.info(f"Loaded model from {args.lit_model_path}")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
+    checkpoint_val_loss_callback = ModelCheckpoint(
+    monitor='epoch_valid_loss',
+    dirpath='out/',
+    filename=f'checkpoint-val_loss-name_{args.model_name}-type_{args.model_type}-version_{args.model_version}'+'-epoch{epoch:02d}-val_loss{val_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-lr{learning_rate:.2f}',
+    auto_insert_metric_name=False
+    )
+    checkpoint_precision_callback = ModelCheckpoint(
+    monitor='epoch_valid_loss',
+    dirpath='out/',
+    mode='max',
+    filename=f'checkpoint-precision-name_{args.model_name}-type_{args.model_type}-version_{args.model_version}'+'-epoch{epoch:02d}-val_loss{val_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-lr{learning_rate:.2f}',
+    auto_insert_metric_name=False
+    )
+
 
     wandb_logger = WandbLogger(
         project=args.project_name, entity="gustavhartz")
@@ -121,7 +135,7 @@ def main(args):
     trainer = pl.Trainer(gpus=gpus, max_epochs=args.num_train_epochs,
                          logger=wandb_logger, 
                          strategy='ddp', 
-                         callbacks=[lr_monitor], 
+                         callbacks=[lr_monitor, checkpoint_val_loss_callback, checkpoint_precision_callback], 
                          auto_select_gpus=args.auto_select_gpus)
     # if test model
     if args.test_model:
