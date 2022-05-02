@@ -1,0 +1,111 @@
+cpuPlatform: Intel Skylake
+creationTimestamp: "2022-04-10T01:33:34.801-07:00"
+deletionProtection: false
+disks:
+  - autoDelete: true
+    boot: true
+    deviceName: boot
+    diskSizeGb: 1000
+    guestOsFeatures:
+      - type: VIRTIO_SCSI_MULTIQUEUE
+      - type: UEFI_COMPATIBLE
+      - type: GVNIC
+    index: 0
+    interface: SCSI
+    kind: compute#attachedDisk
+    licenses:
+      - https://www.googleapis.com/compute/v1/projects/click-to-deploy-images/global/licenses/c2d-tensorflow
+      - https://www.googleapis.com/compute/v1/projects/click-to-deploy-images/global/licenses/c2d-dl-platform-gvnic
+      - https://www.googleapis.com/compute/v1/projects/click-to-deploy-images/global/licenses/c2d-dl-platform-gpu-pytorch-experimental
+      - https://www.googleapis.com/compute/v1/projects/click-to-deploy-images/global/licenses/c2d-dl-platform-gpu-pytorch-1-11
+      - https://www.googleapis.com/compute/v1/projects/click-to-deploy-images/global/licenses/c2d-dl-platform-debian-10
+      - https://www.googleapis.com/compute/v1/projects/click-to-deploy-images/global/licenses/c2d-dl-platform-notebooks
+    mode: READ_WRITE
+    source: https://www.googleapis.com/compute/v1/projects/dev-gustav/zones/europe-west4-b/disks/contract-analysis-pytorch-1-11-boot
+    type: PERSISTENT
+  - autoDelete: true
+    boot: false
+    deviceName: data
+    diskSizeGb: 1000
+    index: 1
+    interface: SCSI
+    kind: compute#attachedDisk
+    mode: READ_WRITE
+    source: https://www.googleapis.com/compute/v1/projects/dev-gustav/zones/europe-west4-b/disks/contract-analysis-pytorch-1-11-data
+    type: PERSISTENT
+fingerprint: WBCW-VGJYGc=
+guestAccelerators:
+  - acceleratorCount: 4
+    acceleratorType: https://www.googleapis.com/compute/v1/projects/dev-gustav/zones/europe-west4-b/acceleratorTypes/nvidia-tesla-t4
+id: 1855431973896399025
+kind: compute#instance
+labelFingerprint: sSus3085VUY=
+labels:
+  goog-caip-notebook: ""
+lastStartTimestamp: "2022-04-26T14:28:45.107-07:00"
+lastStopTimestamp: "2022-04-26T06:06:04.012-07:00"
+machineType: https://www.googleapis.com/compute/v1/projects/dev-gustav/zones/europe-west4-b/machineTypes/n1-highmem-32
+metadata:
+  fingerprint: mpuyLTfd0ZU=
+  items:
+    - key: enable-guest-attributes
+      value: "TRUE"
+    - key: framework
+      value: PyTorch:1.11
+    - key: install-nvidia-driver
+      value: "True"
+    - key: notebooks-api
+      value: PROD
+    - key: proxy-mode
+      value: service_account
+    - key: report-system-health
+      value: "true"
+    - key: restriction
+      value: ""
+    - key: shutdown-script
+      value: /opt/deeplearning/bin/shutdown_script.sh
+    - key: title
+      value: PyTorch/CUDA11.3.GPU
+    - key: version
+      value: "91"
+    - key: proxy-url
+      value: 34a41ed08a8cad67-dot-europe-west4.notebooks.googleusercontent.com
+  kind: compute#metadata
+name: contract-analysis-pytorch-1-11
+networkInterfaces:
+  - accessConfigs:
+      - kind: compute#accessConfig
+        name: external-nat
+        natIP: 34.147.119.185
+        networkTier: PREMIUM
+        type: ONE_TO_ONE_NAT
+    fingerprint: QLznPcXfrQ0=
+    kind: compute#networkInterface
+    name: nic0
+    network: https://www.googleapis.com/compute/v1/projects/dev-gustav/global/networks/default
+    networkIP: 10.164.0.4
+    subnetwork: https://www.googleapis.com/compute/v1/projects/dev-gustav/regions/europe-west4/subnetworks/default
+scheduling:
+  automaticRestart: true
+  onHostMaintenance: TERMINATE
+  preemptible: false
+selfLink: https://www.googleapis.com/compute/v1/projects/dev-gustav/zones/europe-west4-b/instances/contract-analysis-pytorch-1-11
+serviceAccounts:
+  - email: 794873686688-compute@developer.gserviceaccount.com
+    scopes:
+      - https://www.googleapis.com/auth/cloud-platform
+      - https://www.googleapis.com/auth/userinfo.email
+shieldedInstanceConfig:
+  enableIntegrityMonitoring: true
+  enableSecureBoot: false
+  enableVtpm: true
+shieldedInstanceIntegrityPolicy:
+  updateAutoLearnPolicy: true
+startRestricted: false
+status: RUNNING
+tags:
+  fingerprint: OOp0AY3QO9M=
+  items:
+    - deeplearning-vm
+    - notebook-instance
+zone: https://www.googleapis.com/compute/v1/projects/dev-gustav/zones/europe-west4-b

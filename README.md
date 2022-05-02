@@ -8,6 +8,11 @@ This training setup requires some slight altercations to the squad processor of 
 cp squad.py /opt/conda/lib/python3.7/site-packages/transformers/data/processors/squad.py
 ```
 
+
+### Custom questions 
+
+See notebooks/Custom Questions Creation.ipynb
+
 ### Enviroment
 
 Tested with the following python versions
