@@ -23,6 +23,8 @@ logging.basicConfig(
         level=logging.INFO,
         datefmt='%Y-%m-%d %H:%M:%S')
 
+# Model types confirmed to be working
+MODEL_CLASSES = set(['roberta', 'deberta'])
 
 
 def set_seed(args):
@@ -362,5 +364,9 @@ if __name__ == "__main__":
         logging.warning("You've set test_model to True but you have more than one GPU.  Testing does not work with more than one GPU.  Continuing with one unspecified GPU.")
         args.gpus = 1
         args.specify_gpus = []
+
+    if args.model_type not in MODEL_CLASSES:
+        raise ValueError("Unsupported model type {}. Might work but it's not tested".format(args.model_type))
+
     main(args)
     

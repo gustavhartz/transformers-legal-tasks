@@ -2,21 +2,19 @@ import transformers as tfs
 import pytorch_lightning as pl
 from torch import nn
 # Transformer model for question answering using a custom q&a head for predicting the answer span
-from transformers import AutoConfig
-from transformers import AutoModelForQuestionAnswering
 
 
 class QAModel(nn.Module):
     def __init__(self,
                  hparams,
-                 robertaQA):
+                 transformerQA):
 
         super(QAModel, self).__init__()
         self.hparams = hparams
-        self.roberta = robertaQA.roberta
+        self.model = getattr(transformerQA, hparams.get('model_type'))
 
         # 768 and 2 from the normal bert config
-        self.linearOut = robertaQA.qa_outputs
+        self.linearOut = transformerQA.qa_outputs
 
     def forward(
         self,
@@ -32,17 +30,31 @@ class QAModel(nn.Module):
         output_hidden_states=None,
         return_dict=None,
     ):
-        outputs = self.roberta(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
+
+        if (self.hparams.get('model_type') == 'deberta'):
+            outputs = self.model(
+                input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                position_ids=position_ids,
+                inputs_embeds=inputs_embeds,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+        else:
+            outputs = self.model(
+                input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+
         sequence_output = outputs[0]
         logits = self.linearOut(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
