@@ -319,8 +319,8 @@ def squad_convert_example_to_features(
                 tok_start_position = token_positions[token_positions_idx][0]
                 tok_end_position = token_positions[token_positions_idx][1]
                 prev_ans_moved = True
-                print(
-                    f"Next ans: tok_start_position: {tok_start_position}, tok_end_position: {tok_end_position}", example.qas_id)
+                # print(
+                #    f"Next ans: tok_start_position: {tok_start_position}, tok_end_position: {tok_end_position}", example.qas_id)
 
             if not (tok_start_position >= doc_start and tok_end_position <= doc_end):
                 out_of_span = True
