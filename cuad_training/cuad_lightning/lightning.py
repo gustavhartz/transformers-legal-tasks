@@ -204,13 +204,10 @@ class PLQAModel(pl.LightningModule):
                 all_results.append(
                     SquadResult(unique_id, start_logits, end_logits))
 
-        # Generate random string for filename
-        n = random.randint(0, 12034234)
-
         # Save predictions
-        output_prediction_file = DATASET_PATH + f"_{n}_predictions.json"
-        output_nbest_file = DATASET_PATH + f"_{n}_nbest_predictions.json"
-        output_null_log_odds_file = DATASET_PATH + f"_{n}_null_odds.json"
+        output_prediction_file = DATASET_PATH + f"_predictions.json"
+        output_nbest_file = DATASET_PATH + f"_nbest_predictions.json"
+        output_null_log_odds_file = DATASET_PATH + f"_null_odds.json"
         with open(self.args.predict_file, "r") as f:
             json_test_dict = json.load(f)
 
