@@ -107,6 +107,15 @@ def _is_whitespace(c):
 def squad_convert_example_to_features(
     example, max_seq_length, doc_stride, max_query_length, padding_strategy, is_training, only_first_answer_in_features
 ):
+    # If only_first_answer_in_features is True, then we sort the contens of the example by where the answer occurs
+    # This the features answer adding logic is dependent on these fields being sorted by where the answer occurs
+    if example.answers and not example.is_impossible and not only_first_answer_in_features:
+        ex_answers, ex_answer_positions, ex_answer_texts = zip(
+            *sorted(zip(example.answers, example.answer_positions, example.answer_texts), key=lambda x: x[0]["answer_start"]))
+        example.answers = list(ex_answers)
+        example.answer_positions = list(ex_answer_positions)
+        example.answer_texts = list(ex_answer_texts)
+
     features = []
     if is_training and not example.is_impossible:
         # If the answer cannot be found in the text, then skip this example.
@@ -324,6 +333,9 @@ def squad_convert_example_to_features(
                 if prev_ans_moved:
                     used_answers += 1
                     prev_ans_moved = False
+                    # For debugging
+                    # print(
+                    #    f"Used answer: {used_answers}, tok_start_position: {tok_start_position}, tok_end_position: {tok_end_position}", example.qas_id)
                 if tokenizer.padding_side == "left":
                     doc_offset = 0
                 else:
@@ -352,7 +364,8 @@ def squad_convert_example_to_features(
                 qas_id=example.qas_id,
             )
         )
-    # logger.info(f"Total answers in example: {total_answers}\nUsed answers: {used_answers}\nAnswers not used: {total_answers - used_answers}")
+    # logger.info(
+    #    f"Total answers in example: {total_answers}\nUsed answers: {used_answers}\nAnswers not used: {total_answers - used_answers}")
     return features
 
 
@@ -957,11 +970,6 @@ class SquadExampleV2:
         doc_tokens = []
         char_to_word_offset = []
         prev_is_whitespace = True
-
-        # Keep in sorted format
-        if self.answers:
-            self.answers = sorted(
-                self.answers, key=lambda x: x["answer_start"])
 
         # Split on whitespace so that different tokens may be attributed to their original position.
         for c in self.context_text:
