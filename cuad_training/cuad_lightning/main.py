@@ -7,16 +7,14 @@ from torch.utils.data import DataLoader
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from transformers import AutoTokenizer, AutoConfig, AutoModelForQuestionAnswering, SquadV2Processor, squad_convert_examples_to_features
-import random
-import numpy as np
 import argparse
 import os
 from data import get_balanced_dataset
 import logging
 import gc
 import sys
-import string
 from utils import delete_encoding_layers
+from helpers import str2bool, make_dataset_path, random_string, set_seed, make_dataset_name_base
 from utils_valid import feature_path
 logging.basicConfig(
         format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -25,20 +23,6 @@ logging.basicConfig(
 
 # Model types confirmed to be working
 MODEL_CLASSES = set(['roberta', 'deberta'])
-
-
-def set_seed(args):
-    """Create a random seed for reproducibility
-
-    Args:
-        args (_type_): Argparse
-    """    
-    seed = args.get('seed', 42)
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if args.get('gpus', 0) > 0:
-        torch.cuda.manual_seed_all(seed)
 
 
 def main(args):
@@ -91,6 +75,12 @@ def main(args):
     dataset = get_or_create_dataset(
         args, tokenizer, evaluate=False)
     logging.info(f"Total dataset size Train: {len(dataset)}")
+
+    # Terminate if only create dataset
+    if args.only_create_dataset:
+        logging.info("Created dataset. Exiting")
+        return
+
     train_dataset = get_balanced_dataset(dataset)
     logging.info(f"Dataset balanced size Train: {len(train_dataset)}")
     del dataset
@@ -112,17 +102,18 @@ def main(args):
         logging.info(f"Loaded model from {args.lit_model_path}")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
+    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{val_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-lr{learning_rate:.2f}'
     checkpoint_val_loss_callback = ModelCheckpoint(
     monitor='epoch_valid_loss',
     dirpath='out/',
-    filename=f'checkpoint-val_loss-name_{args.model_name}-type_{args.model_type}-version_{args.model_version}'+'-epoch{epoch:02d}-val_loss{val_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-lr{learning_rate:.2f}',
+    filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_'+_checkpoint_ending,
     auto_insert_metric_name=False
     )
     checkpoint_precision_callback = ModelCheckpoint(
     monitor='epoch_valid_loss',
     dirpath='out/',
     mode='max',
-    filename=f'checkpoint-precision-name_{args.model_name}-type_{args.model_type}-version_{args.model_version}'+'-epoch{epoch:02d}-val_loss{val_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-lr{learning_rate:.2f}',
+    filename=f'checkpoint-precision-name_{make_dataset_name_base(args)}_'+_checkpoint_ending,
     auto_insert_metric_name=False
     )
 
@@ -138,7 +129,8 @@ def main(args):
                          logger=wandb_logger, 
                          strategy='ddp', 
                          callbacks=[lr_monitor, checkpoint_val_loss_callback, checkpoint_precision_callback], 
-                         auto_select_gpus=args.auto_select_gpus)
+                         auto_select_gpus=args.auto_select_gpus,
+                         val_check_interval=args.val_check_interval)
     # if test model
     if args.test_model:
         del train_dataset
@@ -155,26 +147,21 @@ def main(args):
     torch.save(litModel.model,
                f"./{args.model_name}_{args.model_type}_{args.model_version}_{random_string(5)}_model.pt")
 
-
-# Function that generates random string of length n
-def random_string(n):
-    return ''.join(random.choice(string.ascii_lowercase) for i in range(n))
-
-
 def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
     processor = SquadV2Processor()
     load_data = os.path.exists(dataset_path+"_examples") and args.cached_data
     if load_data:
         logging.info("Using cached examples")
         examples = torch.load(dataset_path+"_examples")
+        logging.info(f"Loaded {len(examples)} examples")
     # Use train processor on both train and valid for getting validation loss
     filename = args.predict_file if evaluate else args.train_file
     examples = processor.get_train_examples(
             None, filename=filename)
     if not load_data:
-        logging.info("Saving examples...")
+        logging.info(f"Saving {len(examples)} examples")
         torch.save(examples, dataset_path+"_examples")
-    
+
 
     logging.info("Creating features... This is a long running process and can take multiple hours")
     features, dataset = squad_convert_examples_to_features(
@@ -185,7 +172,8 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
         max_query_length=args.max_query_length,
         is_training=True,
         return_dataset="pt",
-        threads=args.dataset_creation_threads
+        threads=args.dataset_creation_threads,
+        only_first_answer_in_features=args.only_first_answer_in_features,
         )
     # Assert that we are using the custom dataset with the feature indexes
     assert len(dataset[0]) == 9, "Dataset is not the correct size. Did you remember to use the customs squad.py file in transformers?"
@@ -217,10 +205,7 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
 
 
 def get_or_create_dataset(args, tokenizer, evaluate=False):
-    dataset = None
-    DATASET_NAME = args.dataset_name+"_"+args.model_type
-    dataset_path = os.path.join(
-        args.out_dir, DATASET_NAME + "_eval_" + args.predict_file_version if evaluate else DATASET_NAME + "_train_" + args.train_file_version)
+    dataset_path = make_dataset_path(args, evaluate)
     if args.cached_data and os.path.exists(dataset_path+"_dataset"):
         # Load dataset from cache if it exists
         dataset= torch.load(dataset_path+"_dataset")
@@ -282,8 +267,8 @@ if __name__ == "__main__":
     argparser.add_argument('--max_seq_length', type=int,
                            default=512, help='Max sequence length')
     # Used cached data
-    argparser.add_argument('--cached_data', type=bool,
-                           default=True, help='Use cached data')
+    argparser.add_argument('--cached_data', type=str2bool, nargs='?',
+                        const=True, default=True, help='Use cached data')
     # Train file
     argparser.add_argument('--train_file', type=str,
                            default='../../data/train_separate_questions.json', help='Train file')
@@ -303,8 +288,8 @@ if __name__ == "__main__":
     argparser.add_argument('--model_version', type=str,
                            default='v1', help='Model version')
     # Do lower case
-    argparser.add_argument('--do_lower_case', type=bool,
-                           default=True, help='Do lower case')
+    argparser.add_argument('--do_lower_case', type=str2bool, nargs='?',
+                        const=True, default=True, help='Do lower case')
     # max query length
     argparser.add_argument('--max_query_length', type=int,
                            default=64, help='Max query length')
@@ -330,8 +315,8 @@ if __name__ == "__main__":
     argparser.add_argument('--dataset_creation_threads', type=int,
                             default=60, help='Dataset creation threads')
     # Test model
-    argparser.add_argument('--test_model', type=bool,
-                            default=False, help='Test model. This will not train the model and only run a single evaluation on the predict file using the CUAD metrics')
+    argparser.add_argument('--test_model', type=str2bool, nargs='?',
+                            const=True, default=False, help='Test model. This will not train the model and only run a single evaluation on the predict file using the CUAD metrics')
     # Verbose
     argparser.add_argument('--verbose', type=bool,
                             default=True, help='Verbose')
@@ -339,8 +324,8 @@ if __name__ == "__main__":
     argparser.add_argument("--delete_transformer_layers", nargs='+',
                             help='Delete layers. Used like --delete_transformer_layers 9 10 11. ', type=int, default=[])
     # Autoselect gpus
-    argparser.add_argument('--auto_select_gpus', type=bool,
-                            default=False, help='Autoselect gpus in pytorch lightning')
+    argparser.add_argument('--auto_select_gpus', type=str2bool, nargs='?',
+                        const=True, default=False, help='Autoselect gpus in pytorch lightning')
     # Specify gpus
     argparser.add_argument("--specify_gpus", nargs='+',
                            help='Used if a specific device should be used in pl training. For using device 1 and 2 use: --specific_gpus 1 2', type=int, default=[])
@@ -350,6 +335,16 @@ if __name__ == "__main__":
     # Pytorch model load
     argparser.add_argument('--lit_model_path', type=str,
                             default=None, help='Path to pytorch model')
+    # Val check interval 0.25
+    argparser.add_argument('--val_check_interval', type=float,
+                            default=0.25, help='Val check interval. See pytorch lightning documentation for more info')
+    # only_first_answer_examples
+    argparser.add_argument('--only_first_answer_in_features', type=str2bool, nargs='?',
+                        const=True, default=True, help='When creating examples only use the first answer for each question')
+    # only_create_dataset
+    argparser.add_argument('--only_create_dataset', type=str2bool, nargs='?',
+                        const=True, default=False, help='Terminate after creating dataset')
+
 
     args = argparser.parse_args()
     if args.doc_stride >= args.max_seq_length - args.max_query_length:
