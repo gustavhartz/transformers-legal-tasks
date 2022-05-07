@@ -8,6 +8,7 @@ import copy
 import numpy as np
 import os
 from collections import namedtuple
+from helpers import make_dataset_name
 
 
 def normalize_answer(s):
@@ -245,9 +246,9 @@ def compute_top_1_scores_from_preds(predictions, iou_threshold=0.5, include_df=F
 
 def feature_path(args, feature_index):
     """Generates the feature path and prefix for the given args. Combine with the feature_path_and_prefix function."""
-    DATASET_NAME = args.dataset_name+"_"+args.model_type
+    DATASET_NAME = make_dataset_name(args, evaluate=True)
     dataset_path = os.path.join(
-        args.out_dir, "features", DATASET_NAME + "_eval_" + args.predict_file_version + f"_{feature_index}_features_validation")
+        args.out_dir, "features", DATASET_NAME + f"_{feature_index}_features_validation")
     return dataset_path
 
 

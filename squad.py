@@ -105,27 +105,28 @@ def _is_whitespace(c):
 
 
 def squad_convert_example_to_features(
-    example, max_seq_length, doc_stride, max_query_length, padding_strategy, is_training
+    example, max_seq_length, doc_stride, max_query_length, padding_strategy, is_training, only_first_answer_in_features
 ):
     features = []
     if is_training and not example.is_impossible:
-        # Get start and end position
-        start_position = example.start_position
-        end_position = example.end_position
-
         # If the answer cannot be found in the text, then skip this example.
-        actual_text = " ".join(
-            example.doc_tokens[start_position: (end_position + 1)])
-        cleaned_answer_text = " ".join(
-            whitespace_tokenize(example.answer_text))
-        if actual_text.find(cleaned_answer_text) == -1:
-            logger.warning(
-                f"Could not find answer: '{actual_text}' vs. '{cleaned_answer_text}'")
-            return []
-
+        actual_texts = []
+        cleaned_answer_texts = []
+        for idx, (start_position, end_position) in enumerate(example.answer_positions):
+            actual_text = " ".join(
+                example.doc_tokens[start_position: (end_position + 1)])
+            cleaned_answer_text = " ".join(
+                whitespace_tokenize(example.answer_texts[idx]))
+            if actual_text.find(cleaned_answer_text) == -1:
+                logger.warning(
+                    f"Could not find answer: '{actual_text}' vs. '{cleaned_answer_text}'")
+                return []
+            actual_texts.append(actual_text)
+            cleaned_answer_texts.append(cleaned_answer_text)
     tok_to_orig_index = []
     orig_to_tok_index = []
     all_doc_tokens = []
+    token_positions = []
     for (i, token) in enumerate(example.doc_tokens):
         orig_to_tok_index.append(len(all_doc_tokens))
         if tokenizer.__class__.__name__ in [
@@ -144,15 +145,17 @@ def squad_convert_example_to_features(
             all_doc_tokens.append(sub_token)
 
     if is_training and not example.is_impossible:
-        tok_start_position = orig_to_tok_index[example.start_position]
-        if example.end_position < len(example.doc_tokens) - 1:
-            tok_end_position = orig_to_tok_index[example.end_position + 1] - 1
-        else:
-            tok_end_position = len(all_doc_tokens) - 1
-
-        (tok_start_position, tok_end_position) = _improve_answer_span(
-            all_doc_tokens, tok_start_position, tok_end_position, tokenizer, example.answer_text
-        )
+        for idx, (start_position, end_position) in enumerate(example.answer_positions):
+            tok_start_position = orig_to_tok_index[start_position]
+            if example.end_position < len(example.doc_tokens) - 1:
+                tok_end_position = orig_to_tok_index[end_position + 1] - 1
+            else:
+                tok_end_position = len(all_doc_tokens) - 1
+            (tok_start_position, tok_end_position) = _improve_answer_span(
+                all_doc_tokens, tok_start_position, tok_end_position, tokenizer, example.answers[
+                    idx]['text']
+            )
+            token_positions.append((tok_start_position, tok_end_position))
 
     spans = []
 
@@ -254,6 +257,17 @@ def squad_convert_example_to_features(
             )
             spans[doc_span_index]["token_is_max_context"][index] = is_max_context
 
+    # As with the original implementation, we only use the first if V.1 though this is sorted and the original is not
+    token_positions_idx = 0
+
+    # For logging
+    used_answers = 0
+    total_answers = len(example.answers)
+    prev_ans_moved = True
+
+    if is_training and not example.is_impossible:
+        tok_start_position = token_positions[token_positions_idx][0]
+        tok_end_position = token_positions[token_positions_idx][1]
     for span in spans:
         # Identify the position of the CLS token
         cls_index = span["input_ids"].index(tokenizer.cls_token_id)
@@ -290,6 +304,15 @@ def squad_convert_example_to_features(
             doc_end = span["start"] + span["length"] - 1
             out_of_span = False
 
+            # if the answer belongs to an earlier span than the current one we try to move to the next one. Only one answer in span is allowed
+            while (token_positions_idx < len(token_positions)-1) and (tok_start_position < doc_start) and not only_first_answer_in_features:
+                token_positions_idx += 1
+                tok_start_position = token_positions[token_positions_idx][0]
+                tok_end_position = token_positions[token_positions_idx][1]
+                prev_ans_moved = True
+                print(
+                    f"Next ans: tok_start_position: {tok_start_position}, tok_end_position: {tok_end_position}", example.qas_id)
+
             if not (tok_start_position >= doc_start and tok_end_position <= doc_end):
                 out_of_span = True
 
@@ -298,6 +321,9 @@ def squad_convert_example_to_features(
                 end_position = cls_index
                 span_is_impossible = True
             else:
+                if prev_ans_moved:
+                    used_answers += 1
+                    prev_ans_moved = False
                 if tokenizer.padding_side == "left":
                     doc_offset = 0
                 else:
@@ -326,6 +352,7 @@ def squad_convert_example_to_features(
                 qas_id=example.qas_id,
             )
         )
+    # logger.info(f"Total answers in example: {total_answers}\nUsed answers: {used_answers}\nAnswers not used: {total_answers - used_answers}")
     return features
 
 
@@ -345,6 +372,7 @@ def squad_convert_examples_to_features(
     return_dataset=False,
     threads=1,
     tqdm_enabled=True,
+    only_first_answer_in_features=True,
 ):
     """
     Converts a list of examples into a list of features that can be directly given as input to a model. It is
@@ -361,6 +389,8 @@ def squad_convert_examples_to_features(
         return_dataset: Default False. Either 'pt' or 'tf'.
             if 'pt': returns a torch.data.TensorDataset, if 'tf': returns a tf.data.Dataset
         threads: multiple processing threads.
+        tqdm_enabled: Default True.
+        only_first_answer_in_features: If True, only the first answer in the example is used in the features
 
 
     Returns:
@@ -392,6 +422,7 @@ def squad_convert_examples_to_features(
             max_query_length=max_query_length,
             padding_strategy=padding_strategy,
             is_training=is_training,
+            only_first_answer_in_features=only_first_answer_in_features,
         )
         features = list(
             tqdm(
@@ -701,10 +732,11 @@ class SquadProcessor(DataProcessor):
                             answer = qa["answers"][0]
                             answer_text = answer["text"]
                             start_position_character = answer["answer_start"]
+                            answers = qa["answers"]
                         else:
                             answers = qa["answers"]
 
-                    example = SquadExample(
+                    example = SquadExampleV2(
                         qas_id=qas_id,
                         question_text=question_text,
                         context_text=context_text,
@@ -877,3 +909,89 @@ class SquadResult:
             self.start_top_index = start_top_index
             self.end_top_index = end_top_index
             self.cls_logits = cls_logits
+
+
+class SquadExampleV2:
+    """
+    A single training/test example for the CUAD dataset, as loaded from disk.
+
+    Args:
+        qas_id: The example's unique identifier
+        question_text: The question string
+        context_text: The context string
+        answer_text: The answer string - NOT IN USE
+        start_position_character - NOT IN USE
+        title: The title of the example
+        answers: None by default, this is used during evaluation and training for extracting the location of the answer. Holds answers as well as their start positions in format List[Dict[str, Any]] where the dict contains the keys text and answer_start.
+        is_impossible: False by default, set to True if the example has no possible answer.
+    """
+
+    def __init__(
+        self,
+        qas_id,
+        question_text,
+        context_text,
+        answer_text,
+        start_position_character,
+        title,
+        answers=None,
+        is_impossible=False,
+    ):
+        self.qas_id = qas_id
+        self.question_text = question_text
+        self.context_text = context_text
+        self.title = title
+        self.is_impossible = is_impossible
+        self.answers = answers
+
+        if start_position_character:
+            assert len(
+                answers) > 0, "start_position_character is set but no answers provided. In v2 this is not allowed."
+
+        self.answer_positions = []
+        self.answer_texts = []
+
+        # For compatability with the original SQuAD format, we keep the
+        self.start_position, self.end_position = 0, 0
+
+        doc_tokens = []
+        char_to_word_offset = []
+        prev_is_whitespace = True
+
+        # Keep in sorted format
+        if self.answers:
+            self.answers = sorted(
+                self.answers, key=lambda x: x["answer_start"])
+
+        # Split on whitespace so that different tokens may be attributed to their original position.
+        for c in self.context_text:
+            if _is_whitespace(c):
+                prev_is_whitespace = True
+            else:
+                if prev_is_whitespace:
+                    doc_tokens.append(c)
+                else:
+                    doc_tokens[-1] += c
+                prev_is_whitespace = False
+            char_to_word_offset.append(len(doc_tokens) - 1)
+
+        self.doc_tokens = doc_tokens
+        self.char_to_word_offset = char_to_word_offset
+
+        # Start and end positions only has a value during evaluation.
+        if self.answers and not is_impossible:
+            for answer in self.answers:
+
+                start_p = char_to_word_offset[answer["answer_start"]]
+
+                end_p = char_to_word_offset[
+                    min(answer['answer_start'] + len(answer['text']) -
+                        1, len(char_to_word_offset) - 1)
+                ]
+                self.answer_positions.append((start_p, end_p))
+                self.answer_texts.append(answer['text'])
+
+            # For compatability with the original SQuAD format, we set the start and end positions and answer_text
+            self.start_position = self.answer_positions[0][0]
+            self.end_position = self.answer_positions[0][1]
+            self.answer_text = self.answer_texts[0]

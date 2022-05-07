@@ -4,6 +4,7 @@ import torch
 import pytorch_lightning as pl
 from transformers import get_linear_schedule_with_warmup
 from transformers.data.processors.squad import SquadResult
+from helpers import make_dataset_path
 from utils import (
     compute_predictions_logits,
     squad_evaluate,
@@ -159,7 +160,8 @@ class PLQAModel(pl.LightningModule):
             'f1_total': int(100*f1_sum/ct_total),
         }
         for k, v in performance_stats.items():
-            self.log("performance_stat_"+k, v, rank_zero_only=True)
+            self.log("performance_stat_"+k, float(v)
+                     if isinstance(v, int) else v, rank_zero_only=True)
 
     def test_step(self, batch, batch_idx):
         inputs = {
@@ -189,8 +191,7 @@ class PLQAModel(pl.LightningModule):
 
     def test_epoch_end(self, outputs):
 
-        DATASET_PATH = os.path.join(self.args.out_dir, self.args.dataset_name+"_" +
-                                    self.args.model_type+"_eval_" + self.args.predict_file_version)
+        DATASET_PATH = make_dataset_path(self.args, True)
         examples = torch.load(DATASET_PATH+"_examples")
         features = torch.load(DATASET_PATH+"_features")
         all_results = []
@@ -205,14 +206,11 @@ class PLQAModel(pl.LightningModule):
 
         # Generate random string for filename
         n = random.randint(0, 12034234)
-        BASE_PATH = os.path.join(self.args.out_dir, self.args.model_type + "_" + self.args.model_name +
-                                 f"_{self.args.model_version}"+f"_{n}_eval_{self.args.predict_file_version}_")
 
         # Save predictions
-        torch.save(all_results, BASE_PATH + f"test_results")
-        output_prediction_file = BASE_PATH + "predictions.json"
-        output_nbest_file = BASE_PATH + "nbest_predictions.json"
-        output_null_log_odds_file = BASE_PATH + "null_odds.json"
+        output_prediction_file = DATASET_PATH + f"_{n}_predictions.json"
+        output_nbest_file = DATASET_PATH + f"_{n}_nbest_predictions.json"
+        output_null_log_odds_file = DATASET_PATH + f"_{n}_null_odds.json"
         with open(self.args.predict_file, "r") as f:
             json_test_dict = json.load(f)
 
@@ -233,8 +231,6 @@ class PLQAModel(pl.LightningModule):
             self.args.null_score_diff_threshold,
             self.tokenizer,
         )
-        logging.info("Saving predictions")
-        torch.save(predictions, BASE_PATH + f"test_predictions")
         logging.info("Evaluating predictions")
         # Handle results
         results = squad_evaluate(examples, predictions)
@@ -248,10 +244,12 @@ class PLQAModel(pl.LightningModule):
             print(res)
 
         for k, v in results.items():
-            self.log("performance_stats_test"+k, v)
+            self.log("performance_stats_test"+k, float(v)
+                     if isinstance(v, int) else v)
 
         for k, v in res.items():
-            self.log("performance_AUPR_test"+k, v)
+            self.log("performance_AUPR_test"+k, float(v)
+                     if isinstance(v, int) else v)
 
     def setup(self, stage=None) -> None:
         if stage != "fit":
