@@ -152,12 +152,12 @@ class PLQAModel(pl.LightningModule):
             'fp': fp if fp else -1,
             'fn': fn if fn else -1,
             'tn': tn if tn else -1,
-            'recall': int(100*tp/(tp+fn)) if (tp+fn) > 0 else 0,
-            'precision': int(100*tp/(tp+fp)) if (tp+fp) > 0 else 0,
+            'recall': 100*tp/(tp+fn) if (tp+fn) > 0 else 0,
+            'precision': 100*tp/(tp+fp) if (tp+fp) > 0 else 0,
             'observations': ct_total if ct_total else -1,
-            'em': int(100*em_sum/ct_total),
-            'f1_batch': int(100*f1_sum/ct_batch),
-            'f1_total': int(100*f1_sum/ct_total),
+            'em': 100*em_sum/ct_total if (100*em_sum/ct_total) > 0 else 0,
+            'f1_batch': 100*f1_sum/ct_batch if (100*f1_sum/ct_batch) > 0 else 0,
+            'f1_total': 100*f1_sum/ct_total if (100*f1_sum/ct_total) > 0 else 0,
         }
         for k, v in performance_stats.items():
             self.log("performance_stat_"+k, float(v)
@@ -241,10 +241,16 @@ class PLQAModel(pl.LightningModule):
             print(res)
 
         for k, v in results.items():
+            if not v:
+                logging.warn(
+                    f"In logging performance_stats_test: {k} got value {v}")
             self.log("performance_stats_test"+k, float(v)
                      if isinstance(v, int) else v)
 
         for k, v in res.items():
+            if not v:
+                logging.warn(
+                    f"In logging performance_AUPR_test: {k} got value {v}")
             self.log("performance_AUPR_test"+k, float(v)
                      if isinstance(v, int) else v)
 
