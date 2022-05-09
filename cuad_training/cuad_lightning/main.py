@@ -102,19 +102,21 @@ def main(args):
         logging.info(f"Loaded model from {args.lit_model_path}")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{val_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-lr{learning_rate:.2f}'
+    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-lr{learning_rate:.2f}-global_step{global_step}'
     checkpoint_val_loss_callback = ModelCheckpoint(
     monitor='epoch_valid_loss',
     dirpath='out/',
     filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_'+_checkpoint_ending,
-    auto_insert_metric_name=False
+    auto_insert_metric_name=False,
+    save_top_k=2,
     )
     checkpoint_precision_callback = ModelCheckpoint(
-    monitor='epoch_valid_loss',
+    monitor='performance_stat_precision',
     dirpath='out/',
     mode='max',
     filename=f'checkpoint-precision-name_{make_dataset_name_base(args)}_'+_checkpoint_ending,
-    auto_insert_metric_name=False
+    auto_insert_metric_name=False,
+    save_top_k=2,
     )
 
 
@@ -335,9 +337,9 @@ if __name__ == "__main__":
     # Pytorch model load
     argparser.add_argument('--lit_model_path', type=str,
                             default=None, help='Path to pytorch model')
-    # Val check interval 0.25
+    # Val check interval 0.5
     argparser.add_argument('--val_check_interval', type=float,
-                            default=0.25, help='Val check interval. See pytorch lightning documentation for more info')
+                            default=0.5, help='Val check interval. See pytorch lightning documentation for more info')
     # only_first_answer_examples
     argparser.add_argument('--only_first_answer_in_features', type=str2bool, nargs='?',
                         const=True, default=True, help='When creating examples only use the first answer for each question')
