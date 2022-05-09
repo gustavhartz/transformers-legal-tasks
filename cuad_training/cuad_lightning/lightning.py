@@ -101,25 +101,6 @@ class PLQAModel(pl.LightningModule):
 
         top_k_preds = get_pred_from_batch_outputs(
             self.args, batch, outputs[1], outputs[2], self.tokenizer)
-        # If on main process log text examples
-        # 2 times each epoch approx
-        rand_lim = ((self.hparams.get('val_set_size',
-                                      5000) / max(self.args.gpus, 1)) / self.hparams.batch_size) / 2
-        try:
-            rand_lim = int(rand_lim)
-        except Exception:
-            rand_lim = 5000
-
-        log_text = (random.randint(0, rand_lim) == 0)
-
-        if self.trainer.is_global_zero and log_text:
-
-            columns = ['id', 'top_k_id', 'is_impossible', 'prediction', 'answer',
-                       'confidence', 'start_token_pos', 'end_token_pos', 'feature_index']
-            flattend_results = [
-                y for x in top_k_preds for y in x if y.answer_text or y.pred_text]
-            self.logger.log_text(
-                key='valid_pred_sample', columns=columns, data=flattend_results)
 
         rs = compute_top_1_scores_from_preds(top_k_preds)
 
