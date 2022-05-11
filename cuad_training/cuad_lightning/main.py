@@ -102,21 +102,23 @@ def main(args):
         logging.info(f"Loaded model from {args.lit_model_path}")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-lr{learning_rate:.2f}-global_step{global_step}'
+    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-global_step{step}'
     checkpoint_val_loss_callback = ModelCheckpoint(
     monitor='epoch_valid_loss',
-    dirpath='out/',
+    dirpath='out/checkpoints/',
     filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_'+_checkpoint_ending,
     auto_insert_metric_name=False,
     save_top_k=2,
+    save_weights_only=True
     )
     checkpoint_precision_callback = ModelCheckpoint(
     monitor='performance_stat_precision',
-    dirpath='out/',
+    dirpath='out/checkpoints/',
     mode='max',
     filename=f'checkpoint-precision-name_{make_dataset_name_base(args)}_'+_checkpoint_ending,
     auto_insert_metric_name=False,
     save_top_k=2,
+    save_weights_only=True
     )
 
 
