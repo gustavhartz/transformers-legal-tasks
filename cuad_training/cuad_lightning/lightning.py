@@ -64,7 +64,7 @@ class PLQAModel(pl.LightningModule):
 
         outputs = self.model(**inputs)
         loss = outputs[0]
-        self.log("train_loss", loss, sync_dist=True)
+        self.log("train_loss", loss)
         return {'loss': loss, 'pred': [outputs[1], outputs[2]]}
 
     def training_epoch_end(self, outputs):
@@ -97,7 +97,7 @@ class PLQAModel(pl.LightningModule):
         loss = outputs[0]
         s_l = outputs[1]
         e_l = outputs[2]
-        self.log("valid_loss", loss, sync_dist=True)
+        self.log("valid_loss", loss)
 
         top_k_preds = get_pred_from_batch_outputs(
             self.args, batch, outputs[1], outputs[2], self.tokenizer)

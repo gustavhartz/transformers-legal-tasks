@@ -102,7 +102,7 @@ def main(args):
         logging.info(f"Loaded model from {args.lit_model_path}")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.2f}-precision{performance_stat_precision:.2f}-tp{performance_stat_tp:.2f}-global_step{step}'
+    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.3f}-precision{performance_stat_precision:.3f}-tp{performance_stat_tp:.3f}-global_step{step}'
     checkpoint_val_loss_callback = ModelCheckpoint(
     monitor='epoch_valid_loss',
     dirpath='out/checkpoints/',
@@ -147,9 +147,6 @@ def main(args):
     logging.info("Starting training")
     trainer.fit(litModel, train_loader, val_loader, ckpt_path=args.resume_from_pl_checkpoint)
     logging.info("Training finished")
-    logging.info("Saving model")
-    torch.save(litModel.model,
-               f"./{args.model_name}_{args.model_type}_{args.model_version}_{random_string(5)}_model.pt")
 
 def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
     processor = SquadV2Processor()
