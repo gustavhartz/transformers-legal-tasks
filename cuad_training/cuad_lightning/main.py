@@ -106,7 +106,7 @@ def main(args):
     checkpoint_val_loss_callback = ModelCheckpoint(
     monitor='epoch_valid_loss',
     dirpath='out/checkpoints/',
-    filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_'+_checkpoint_ending,
+    filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_{args.model_name}_'+_checkpoint_ending,
     auto_insert_metric_name=False,
     save_top_k=2,
     save_weights_only=True
@@ -115,7 +115,7 @@ def main(args):
     monitor='performance_stat_precision',
     dirpath='out/checkpoints/',
     mode='max',
-    filename=f'checkpoint-precision-name_{make_dataset_name_base(args)}_'+_checkpoint_ending,
+    filename=f'checkpoint-precision-name_{make_dataset_name_base(args)}_{args.model_name}_'+_checkpoint_ending,
     auto_insert_metric_name=False,
     save_top_k=2,
     save_weights_only=True
