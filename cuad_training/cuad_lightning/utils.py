@@ -497,6 +497,7 @@ def compute_predictions_logits(
         null_end_logit = 0  # the end logit at the slice with min null score
         for (feature_index, feature) in enumerate(features):
             result = unique_id_to_result[feature.unique_id]
+            # TODO: This is a retarded way of doing this. It does not produce the same results top-n predictions. Two best indexes could be invalid
             start_indexes = _get_best_indexes(result.start_logits, n_best_size)
             end_indexes = _get_best_indexes(result.end_logits, n_best_size)
             # if we could have irrelevant answers, get the min score of irrelevant
