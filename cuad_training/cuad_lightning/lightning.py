@@ -173,6 +173,7 @@ class PLQAModel(pl.LightningModule):
     def test_epoch_end(self, outputs):
 
         DATASET_PATH = make_dataset_path(self.args, True)
+        PRED_FILES_PATH = DATASET_PATH + "_model-name_" + self.args.model_name
         examples = torch.load(DATASET_PATH+"_examples")
         features = torch.load(DATASET_PATH+"_features")
         all_results = []
@@ -186,9 +187,9 @@ class PLQAModel(pl.LightningModule):
                     SquadResult(unique_id, start_logits, end_logits))
 
         # Save predictions
-        output_prediction_file = DATASET_PATH + f"_predictions.json"
-        output_nbest_file = DATASET_PATH + f"_nbest_predictions.json"
-        output_null_log_odds_file = DATASET_PATH + f"_null_odds.json"
+        output_prediction_file = PRED_FILES_PATH + f"_predictions.json"
+        output_nbest_file = PRED_FILES_PATH + f"_nbest_predictions.json"
+        output_null_log_odds_file = PRED_FILES_PATH + f"_null_odds.json"
         with open(self.args.predict_file, "r") as f:
             json_test_dict = json.load(f)
 
