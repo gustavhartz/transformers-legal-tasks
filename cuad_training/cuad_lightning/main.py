@@ -305,7 +305,7 @@ if __name__ == "__main__":
                             default='roberta_cuad_checkpoint', help='Project name')
     # N best size
     argparser.add_argument('--n_best_size', type=int,
-                            default=1, help='N best size')
+                            default=20, help='N best size')
     # Dataset name
     argparser.add_argument('--dataset_name', type=str,
                             default='CUAD', help='Dataset name')
