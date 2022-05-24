@@ -155,8 +155,6 @@ def main(args):
         trainer.test(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
         logging.info(f"Finished inference")
         # Delete most data stuff and maybe even model
-        del litModel
-        del trainer
         del val_loader
         del valid_dataset
         gc.collect()
