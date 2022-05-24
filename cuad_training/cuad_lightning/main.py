@@ -14,8 +14,16 @@ import logging
 import gc
 import sys
 from utils import delete_encoding_layers
-from helpers import str2bool, make_dataset_path, random_string, set_seed, make_dataset_name_base
+from helpers import str2bool, make_dataset_path, set_seed, make_dataset_name_base
 from utils_valid import feature_path
+import random
+import wandb
+import json
+from utils_v2 import compute_predictions_logits_multi
+from utils import squad_evaluate
+from evaluate import get_results
+import os
+
 logging.basicConfig(
         format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
         level=logging.INFO,
@@ -27,6 +35,9 @@ MODEL_CLASSES = set(['roberta', 'deberta'])
 
 def main(args):
     global hparams
+    # run specific random int
+    rand_v = random.randint(0,10000)
+    args.random_int = rand_v
     hparams = vars(args)
     set_seed(hparams)
     
@@ -142,6 +153,77 @@ def main(args):
         gc.collect()
         logging.info("Running test inference")
         trainer.test(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
+        logging.info(f"Finished inference")
+        # Delete most data stuff and maybe even model
+        del litModel
+        del trainer
+        del val_loader
+        del valid_dataset
+        gc.collect()
+        # Postprocess the dataset in paralellel with imap
+        DATASET_PATH = make_dataset_path(args, True)
+        PRED_FILES_PATH = DATASET_PATH + "_model-name_" + args.model_name
+        logging.info(f"Loading examples, features, and predictions on main process")
+        features = torch.load(DATASET_PATH+"_features")
+        examples = torch.load(DATASET_PATH+"_examples")
+
+        # Load predictions
+        all_results = torch.load(PRED_FILES_PATH+f"run_int_{args.random_int}"+"_preds.pt")
+
+        output_prediction_file = PRED_FILES_PATH + f"_predictions.json"
+        output_nbest_file = PRED_FILES_PATH + f"_nbest_predictions.json"
+        output_null_log_odds_file = PRED_FILES_PATH + f"_null_odds.json"
+        with open(args.predict_file, "r") as f:
+            json_test_dict = json.load(f)
+        logging.info(f"Loaded data on main process")
+
+        logging.info("Calculating predictions")
+        predictions = compute_predictions_logits_multi(
+            json_test_dict,
+            examples,
+            features,
+            all_results,
+            args.n_best_size,
+            args.max_answer_length,
+            args.do_lower_case,
+            output_prediction_file,
+            output_nbest_file,
+            output_null_log_odds_file,
+            False,  # self.args.verbose_logging,
+            True,  # self.args.version_2_with_negative
+            args.null_score_diff_threshold,
+            tokenizer,
+            threads=args.test_examples_workers,
+            chunk_size=args.test_examples_chunk_size,
+        )
+        logging.info("Evaluating predictions")
+        # Handle results
+        results = squad_evaluate(examples, predictions)
+        logging.info("Getting results")
+        res = get_results(args, output_nbest_file,
+                          gt_dict=json_test_dict, include_model_info=False)
+
+        if args.verbose:
+            logging.info("***** Eval results *****")
+            print(results)
+            print(res)
+
+        for k, v in results.items():
+            if not v:
+                logging.warning(
+                    f"In logging performance_stats_test: {k} got value {v}")
+            wandb.log({"performance_stats_test"+k: float(v)
+                     if isinstance(v, int) else v})
+
+        for k, v in res.items():
+            if not v:
+                logging.warning(
+                    f"In logging performance_AUPR_test: {k} got value {v}")
+            wandb.log({"performance_AUPR_test"+k: float(v)
+                     if isinstance(v, int) else v})
+        # cleanup
+        if args.delete_model_outputs_after_testing:
+            os.remove(PRED_FILES_PATH+f"run_int_{args.random_int}"+"_preds.pt")
         sys.exit(0)
     # Training
     logging.info("Starting training")
@@ -345,6 +427,15 @@ if __name__ == "__main__":
     # only_create_dataset
     argparser.add_argument('--only_create_dataset', type=str2bool, nargs='?',
                         const=True, default=False, help='Terminate after creating dataset')
+    # test_examples_workers
+    argparser.add_argument('--test_examples_workers', type=int,
+                            default=4, help='In testing the number of workers to use for processing data')
+    # test_examples_chunk_size
+    argparser.add_argument('--test_examples_chunk_size', type=int,
+                            default=4, help="In testing the chunk size to use for processing data")
+    # Delete predictions after testing
+    argparser.add_argument('--delete_model_outputs_after_testing', type=str2bool, nargs='?',
+                        const=True, default=True, help="In the new logic we save the predictions as squad results, and these can be keept")
 
 
     args = argparser.parse_args()
