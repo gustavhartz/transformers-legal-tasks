@@ -77,7 +77,6 @@ def main(args):
     
     val_loader = DataLoader(
         valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.dataset_num_workers, drop_last=False)
-    torch.save(val_loader, "vall")
     # Train dataset
     logging.info("Loading train dataset")
     dataset = get_or_create_dataset(
@@ -140,8 +139,6 @@ def main(args):
     trainer = pl.Trainer(gpus=gpus, max_epochs=args.num_train_epochs,
                          logger=wandb_logger, 
                          strategy='ddp',
-                         accelerator='cpu',
-                         num_processes=2,
                          callbacks=[lr_monitor, checkpoint_val_loss_callback, checkpoint_aupr_callback], 
                          auto_select_gpus=args.auto_select_gpus,
                          val_check_interval=args.val_check_interval)

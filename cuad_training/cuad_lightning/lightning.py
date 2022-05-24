@@ -155,7 +155,6 @@ class PLQAModel(pl.LightningModule):
                     end_logits = pred['end_logits'][i]
                     all_results.append(
                         SquadResult(unique_id, start_logits.cpu(), end_logits.cpu()))
-            torch.save(all_results, "results.pkl")
             # Calculate scores
             DATASET_PATH = make_dataset_path(self.args, True)
             PRED_FILES_PATH = DATASET_PATH + "_model-name_" + self.args.model_name
@@ -207,6 +206,8 @@ class PLQAModel(pl.LightningModule):
                 self.log(f"performance_AUPR_{post_fix}_"+k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)
             logging.info(f"Finished evaluating predictions")
+        # Check if works
+        dist.barrier()
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
