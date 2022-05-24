@@ -1,20 +1,11 @@
-import json
-import os
 import torch
 import pytorch_lightning as pl
 from transformers import get_linear_schedule_with_warmup
 from transformers.data.processors.squad import SquadResult
 from helpers import make_dataset_path
-from utils import (
-    compute_predictions_logits,
-    squad_evaluate,
-)
-from evaluate import get_results
 from utils_valid import (get_pred_from_batch_outputs,
                          compute_top_1_scores_from_preds)
 import logging
-import random
-from tqdm import tqdm
 logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
     level=logging.INFO,
@@ -174,7 +165,6 @@ class PLQAModel(pl.LightningModule):
 
         DATASET_PATH = make_dataset_path(self.args, True)
         PRED_FILES_PATH = DATASET_PATH + "_model-name_" + self.args.model_name
-        examples = torch.load(DATASET_PATH+"_examples")
         features = torch.load(DATASET_PATH+"_features")
         all_results = []
         for pred in outputs:
@@ -187,54 +177,9 @@ class PLQAModel(pl.LightningModule):
                     SquadResult(unique_id, start_logits, end_logits))
 
         # Save predictions
-        output_prediction_file = PRED_FILES_PATH + f"_predictions.json"
-        output_nbest_file = PRED_FILES_PATH + f"_nbest_predictions.json"
-        output_null_log_odds_file = PRED_FILES_PATH + f"_null_odds.json"
-        with open(self.args.predict_file, "r") as f:
-            json_test_dict = json.load(f)
-
-        logging.info("Calculating predictions")
-        predictions = compute_predictions_logits(
-            json_test_dict,
-            examples,
-            features,
-            all_results,
-            self.args.n_best_size,
-            self.args.max_answer_length,
-            self.args.do_lower_case,
-            output_prediction_file,
-            output_nbest_file,
-            output_null_log_odds_file,
-            False,  # self.args.verbose_logging,
-            True,  # self.args.version_2_with_negative
-            self.args.null_score_diff_threshold,
-            self.tokenizer,
-        )
-        logging.info("Evaluating predictions")
-        # Handle results
-        results = squad_evaluate(examples, predictions)
-        logging.info("Getting results")
-        res = get_results(self.args, output_nbest_file,
-                          gt_dict=json_test_dict, include_model_info=False)
-
-        if self.args.verbose:
-            logging.info("***** Eval results *****")
-            print(results)
-            print(res)
-
-        for k, v in results.items():
-            if not v:
-                logging.warn(
-                    f"In logging performance_stats_test: {k} got value {v}")
-            self.log("performance_stats_test"+k, float(v)
-                     if isinstance(v, int) else v)
-
-        for k, v in res.items():
-            if not v:
-                logging.warn(
-                    f"In logging performance_AUPR_test: {k} got value {v}")
-            self.log("performance_AUPR_test"+k, float(v)
-                     if isinstance(v, int) else v)
+        torch.save(all_results, PRED_FILES_PATH +
+                   f"run_int_{self.args.random_int}"+"_preds.pt")
+        del features
 
     def setup(self, stage=None) -> None:
         if stage != "fit":
