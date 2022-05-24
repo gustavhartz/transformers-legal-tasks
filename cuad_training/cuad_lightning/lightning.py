@@ -174,7 +174,7 @@ class PLQAModel(pl.LightningModule):
                 output_prediction_file,
                 output_nbest_file,
                 output_null_log_odds_file,
-                False,  # self.args.verbose_logging,
+                self.args.verbose,
                 True,  # self.args.version_2_with_negative
                 self.args.null_score_diff_threshold,
                 self.tokenizer,
