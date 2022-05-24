@@ -17,12 +17,8 @@ from utils import delete_encoding_layers
 from helpers import str2bool, make_dataset_path, set_seed, make_dataset_name_base
 from utils_valid import feature_path
 import random
-import wandb
-import json
-from utils_v2 import compute_predictions_logits_multi
-from utils import squad_evaluate
-from evaluate import get_results
 import os
+import torch.distributed as dist
 
 logging.basicConfig(
         format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -80,7 +76,8 @@ def main(args):
         args, tokenizer, evaluate=True)
     
     val_loader = DataLoader(
-        valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.dataset_num_workers)
+        valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.dataset_num_workers, drop_last=False)
+    torch.save(val_loader, "vall")
     # Train dataset
     logging.info("Loading train dataset")
     dataset = get_or_create_dataset(
@@ -113,7 +110,7 @@ def main(args):
         logging.info(f"Loaded model from {args.lit_model_path}")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.3f}-precision{performance_stat_precision:.3f}-tp{performance_stat_tp:.3f}-global_step{step}'
+    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.3f}-aupr{performance_AUPR_valid_aupr:.3f}-tp{performance_AUPR_valid_prec_at_80_recall:.3f}-global_step{step}'
     checkpoint_val_loss_callback = ModelCheckpoint(
     monitor='epoch_valid_loss',
     dirpath='out/checkpoints/',
@@ -122,8 +119,8 @@ def main(args):
     save_top_k=2,
     save_weights_only=True
     )
-    checkpoint_precision_callback = ModelCheckpoint(
-    monitor='performance_stat_precision',
+    checkpoint_aupr_callback = ModelCheckpoint(
+    monitor='performance_AUPR_valid_aupr',
     dirpath='out/checkpoints/',
     mode='max',
     filename=f'checkpoint-precision-name_{make_dataset_name_base(args)}_{args.model_name}_'+_checkpoint_ending,
@@ -142,8 +139,10 @@ def main(args):
 
     trainer = pl.Trainer(gpus=gpus, max_epochs=args.num_train_epochs,
                          logger=wandb_logger, 
-                         strategy='ddp', 
-                         callbacks=[lr_monitor, checkpoint_val_loss_callback, checkpoint_precision_callback], 
+                         strategy='ddp',
+                         accelerator='cpu',
+                         num_processes=2,
+                         callbacks=[lr_monitor, checkpoint_val_loss_callback, checkpoint_aupr_callback], 
                          auto_select_gpus=args.auto_select_gpus,
                          val_check_interval=args.val_check_interval)
     # if test model
@@ -153,75 +152,7 @@ def main(args):
         gc.collect()
         logging.info("Running test inference")
         trainer.test(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
-        logging.info(f"Finished inference")
-        # Delete most data stuff and maybe even model
-        del val_loader
-        del valid_dataset
-        gc.collect()
-        # Postprocess the dataset in paralellel with imap
-        DATASET_PATH = make_dataset_path(args, True)
-        PRED_FILES_PATH = DATASET_PATH + "_model-name_" + args.model_name
-        logging.info(f"Loading examples, features, and predictions on main process")
-        features = torch.load(DATASET_PATH+"_features")
-        examples = torch.load(DATASET_PATH+"_examples")
-
-        # Load predictions
-        all_results = torch.load(PRED_FILES_PATH+f"run_int_{args.random_int}"+"_preds.pt")
-
-        output_prediction_file = PRED_FILES_PATH + f"_predictions.json"
-        output_nbest_file = PRED_FILES_PATH + f"_nbest_predictions.json"
-        output_null_log_odds_file = PRED_FILES_PATH + f"_null_odds.json"
-        with open(args.predict_file, "r") as f:
-            json_test_dict = json.load(f)
-        logging.info(f"Loaded data on main process")
-
-        logging.info("Calculating predictions")
-        predictions = compute_predictions_logits_multi(
-            json_test_dict,
-            examples,
-            features,
-            all_results,
-            args.n_best_size,
-            args.max_answer_length,
-            args.do_lower_case,
-            output_prediction_file,
-            output_nbest_file,
-            output_null_log_odds_file,
-            False,  # self.args.verbose_logging,
-            True,  # self.args.version_2_with_negative
-            args.null_score_diff_threshold,
-            tokenizer,
-            threads=args.test_examples_workers,
-            chunk_size=args.test_examples_chunk_size,
-        )
-        logging.info("Evaluating predictions")
-        # Handle results
-        results = squad_evaluate(examples, predictions)
-        logging.info("Getting results")
-        res = get_results(args, output_nbest_file,
-                          gt_dict=json_test_dict, include_model_info=False)
-
-        if args.verbose:
-            logging.info("***** Eval results *****")
-            print(results)
-            print(res)
-
-        for k, v in results.items():
-            if not v:
-                logging.warning(
-                    f"In logging performance_stats_test: {k} got value {v}")
-            wandb.log({"performance_stats_test"+k: float(v)
-                     if isinstance(v, int) else v})
-
-        for k, v in res.items():
-            if not v:
-                logging.warning(
-                    f"In logging performance_AUPR_test: {k} got value {v}")
-            wandb.log({"performance_AUPR_test"+k: float(v)
-                     if isinstance(v, int) else v})
-        # cleanup
-        if args.delete_model_outputs_after_testing:
-            os.remove(PRED_FILES_PATH+f"run_int_{args.random_int}"+"_preds.pt")
+        dist.barrier()
         sys.exit(0)
     # Training
     logging.info("Starting training")
