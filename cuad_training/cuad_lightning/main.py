@@ -153,6 +153,7 @@ def main(args):
         gc.collect()
         logging.info("Running test inference")
         trainer.test(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
+        logging.info(f"Finished inference")
         # Delete most data stuff and maybe even model
         del litModel
         del trainer
@@ -162,16 +163,19 @@ def main(args):
         # Postprocess the dataset in paralellel with imap
         DATASET_PATH = make_dataset_path(args, True)
         PRED_FILES_PATH = DATASET_PATH + "_model-name_" + args.model_name
+        logging.info(f"Loading examples, features, and predictions on main process")
         features = torch.load(DATASET_PATH+"_features")
         examples = torch.load(DATASET_PATH+"_examples")
 
         # Load predictions
         all_results = torch.load(PRED_FILES_PATH+f"run_int_{args.random_int}"+"_preds.pt")
+
         output_prediction_file = PRED_FILES_PATH + f"_predictions.json"
         output_nbest_file = PRED_FILES_PATH + f"_nbest_predictions.json"
         output_null_log_odds_file = PRED_FILES_PATH + f"_null_odds.json"
         with open(args.predict_file, "r") as f:
             json_test_dict = json.load(f)
+        logging.info(f"Loaded data on main process")
 
         logging.info("Calculating predictions")
         predictions = compute_predictions_logits_multi(

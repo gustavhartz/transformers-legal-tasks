@@ -174,7 +174,7 @@ class PLQAModel(pl.LightningModule):
                 start_logits = pred['start_logits'][i]
                 end_logits = pred['end_logits'][i]
                 all_results.append(
-                    SquadResult(unique_id, start_logits, end_logits))
+                    SquadResult(unique_id, start_logits.cpu(), end_logits.cpu()))
 
         # Save predictions
         torch.save(all_results, PRED_FILES_PATH +
