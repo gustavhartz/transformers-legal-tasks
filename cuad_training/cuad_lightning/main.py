@@ -328,7 +328,7 @@ if __name__ == "__main__":
                             const=True, default=False, help='Test model. This will not train the model and only run a single evaluation on the predict file using the CUAD metrics')
     # Verbose
     argparser.add_argument('--verbose', type=bool,
-                            default=True, help='Verbose')
+                            default=False, help='Verbose')
     # Delete transformer layers option
     argparser.add_argument("--delete_transformer_layers", nargs='+',
                             help='Delete layers. Used like --delete_transformer_layers 9 10 11. ', type=int, default=[])
