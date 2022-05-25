@@ -118,6 +118,7 @@ def main(args):
     save_top_k=2,
     save_weights_only=True
     )
+    # Callback issues due to PL issue 11242
     checkpoint_aupr_callback = ModelCheckpoint(
     monitor='performance_AUPR_valid_aupr',
     dirpath='out/checkpoints/',
@@ -139,7 +140,7 @@ def main(args):
     trainer = pl.Trainer(gpus=gpus, max_epochs=args.num_train_epochs,
                          logger=wandb_logger, 
                          strategy='ddp',
-                         callbacks=[lr_monitor, checkpoint_val_loss_callback, checkpoint_aupr_callback], 
+                         callbacks=[lr_monitor, checkpoint_val_loss_callback], 
                          auto_select_gpus=args.auto_select_gpus,
                          val_check_interval=args.val_check_interval)
     # if test model
