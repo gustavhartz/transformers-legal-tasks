@@ -123,8 +123,6 @@ class PLQAModel(pl.LightningModule):
             logging.info(
                 f"Collected predictions from all the nodes. Processing time {time.time() - start_time}")
 
-            # Can be issues with the size of the dataset
-            self.log("epoch_valid_collected_output_size", len(all_outputs))
             self.log("epoch_valid_collected_output_time",
                      time.time() - start_time)
 
@@ -206,7 +204,7 @@ class PLQAModel(pl.LightningModule):
                 self.log(f"performance_AUPR_{post_fix}_"+k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)
             logging.info(f"Finished evaluating predictions")
-        # Check if works
+
         dist.barrier()
 
     def test_step(self, batch, batch_idx):
