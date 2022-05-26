@@ -30,6 +30,13 @@ def make_dataset_path(args, evaluate: bool) -> str:
     return dataset_path
 
 
+def make_prediction_path(args, evaluate: bool) -> str:
+    DATASET_NAME = make_dataset_name(args, evaluate)
+    dataset_path = os.path.join(
+        args.out_dir, "predictions", DATASET_NAME)
+    return dataset_path
+
+
 def str2bool(v):
     if isinstance(v, bool):
         return v

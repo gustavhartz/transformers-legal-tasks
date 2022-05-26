@@ -2,13 +2,14 @@ import torch
 import pytorch_lightning as pl
 from transformers import get_linear_schedule_with_warmup
 from transformers.data.processors.squad import SquadResult
-from helpers import make_dataset_path
+from helpers import make_dataset_path, make_prediction_path
 import json
 import torch.distributed as dist
 import time
 from utils_v2 import compute_predictions_logits_multi
 from utils import squad_evaluate
 from evaluate import get_results
+import wandb
 import logging
 logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -113,7 +114,6 @@ class PLQAModel(pl.LightningModule):
                 all_outputs.extend([oup_collected])
 
         # To avoid errors on checkpoint callback
-
         loss = sum([x['loss'].item()
                     for x in all_outputs]) / len(all_outputs)
         self.log("epoch_valid_loss", loss, rank_zero_only=True)
@@ -123,8 +123,9 @@ class PLQAModel(pl.LightningModule):
             logging.info(
                 f"Collected predictions from all the nodes. Processing time {time.time() - start_time}")
 
-            self.log("epoch_valid_collected_output_time",
-                     time.time() - start_time)
+            # PL issue 11242
+            # self.log("epoch_valid_collected_output_time", time.time() - start_time)
+            # wandb.log({"epoch_valid_collected_output_time": time.time() - start_time})
 
             # lazy load in data
             global examples
@@ -140,8 +141,10 @@ class PLQAModel(pl.LightningModule):
                 examples = torch.load(DATASET_PATH+"_examples")
                 with open(self.args.predict_file, "r") as f:
                     json_test_dict = json.load(f)
-                self.log("epoch_valid_load_data_time",
-                         time.time() - start_time)
+
+                # PL issue 11242
+                # wandb.log({"epoch_valid_load_data_time": time.time() - start_time})
+                # self.log("epoch_valid_load_data_time", time.time() - start_time)
 
             # Create the squad_result object
             all_results = []
@@ -155,7 +158,9 @@ class PLQAModel(pl.LightningModule):
                         SquadResult(unique_id, start_logits.cpu(), end_logits.cpu()))
             # Calculate scores
             DATASET_PATH = make_dataset_path(self.args, True)
-            PRED_FILES_PATH = DATASET_PATH + "_model-name_" + self.args.model_name
+            PRED_FILES_PATH = make_prediction_path(self.args, True) + "_model-name_" + \
+                self.args.model_name + \
+                f"_global-step_{self.trainer.global_step}_epoch{self.trainer.current_epoch}"
             output_prediction_file = PRED_FILES_PATH + f"_predictions.json"
             output_nbest_file = PRED_FILES_PATH + f"_nbest_predictions.json"
             output_null_log_odds_file = PRED_FILES_PATH + f"_null_odds.json"
@@ -196,6 +201,23 @@ class PLQAModel(pl.LightningModule):
             if self.args.test_model:
                 post_fix = "test"
 
+            # PL issue 11242
+            # for k, v in results.items():
+            #     wandb.log({f"performance_stats_{post_fix}_"+k: float(v)
+            #               if isinstance(v, int) else v})
+
+            # for k, v in res.items():
+            #     wandb.log({f"performance_AUPR_{post_fix}_"+k: float(v)
+            #                if isinstance(v, int) else v})
+
+            logging.info(f"Finished evaluating predictions rank zero")
+
+        # Force sync between processes related to logging
+        # https://github.com/PyTorchLightning/pytorch-lightning/issues/11242
+        logging.info(
+            f"Reached pl sync barrier on rank: {self.trainer.global_rank}")
+        dist.barrier()
+        if self.trainer.is_global_zero and not self.trainer.sanity_checking:
             for k, v in results.items():
                 self.log(f"performance_stats_{post_fix}_"+k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)
@@ -203,9 +225,12 @@ class PLQAModel(pl.LightningModule):
             for k, v in res.items():
                 self.log(f"performance_AUPR_{post_fix}_"+k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)
-            logging.info(f"Finished evaluating predictions")
-
+            logging.info(f"Finished logging rank zero dist barrier")
+        logging.info(
+            f"Passed pl sync barrier on rank: {self.trainer.global_rank}")
         dist.barrier()
+        logging.info(
+            f"Done with validation epoch code on rank: {self.trainer.global_rank}")
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)

@@ -109,7 +109,9 @@ def main(args):
         logging.info(f"Loaded model from {args.lit_model_path}")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.3f}-aupr{performance_AUPR_valid_aupr:.3f}-tp{performance_AUPR_valid_prec_at_80_recall:.3f}-global_step{step}'
+
+    _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.3f}-aupr{performance_AUPR_valid_aupr:.3f}-aupr80rec{performance_AUPR_valid_prec_at_80_recall:.3f}-hasans{performance_stats_valid_HasAns_f1:.3f}-global_step{step}'
+    
     checkpoint_val_loss_callback = ModelCheckpoint(
     monitor='epoch_valid_loss',
     dirpath='out/checkpoints/',
@@ -118,6 +120,7 @@ def main(args):
     save_top_k=2,
     save_weights_only=True
     )
+    # Callback issues due to PL issue 11242
     checkpoint_aupr_callback = ModelCheckpoint(
     monitor='performance_AUPR_valid_aupr',
     dirpath='out/checkpoints/',
@@ -139,7 +142,7 @@ def main(args):
     trainer = pl.Trainer(gpus=gpus, max_epochs=args.num_train_epochs,
                          logger=wandb_logger, 
                          strategy='ddp',
-                         callbacks=[lr_monitor, checkpoint_val_loss_callback, checkpoint_aupr_callback], 
+                         callbacks=[lr_monitor, checkpoint_val_loss_callback], 
                          auto_select_gpus=args.auto_select_gpus,
                          val_check_interval=args.val_check_interval)
     # if test model
