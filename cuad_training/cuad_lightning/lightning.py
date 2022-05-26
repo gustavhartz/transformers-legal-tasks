@@ -114,7 +114,6 @@ class PLQAModel(pl.LightningModule):
                 all_outputs.extend([oup_collected])
 
         # To avoid errors on checkpoint callback
-
         loss = sum([x['loss'].item()
                     for x in all_outputs]) / len(all_outputs)
         self.log("epoch_valid_loss", loss, rank_zero_only=True)
@@ -126,8 +125,7 @@ class PLQAModel(pl.LightningModule):
 
             # PL issue 11242
             # self.log("epoch_valid_collected_output_time", time.time() - start_time)
-            wandb.log({"epoch_valid_collected_output_time":
-                       time.time() - start_time})
+            # wandb.log({"epoch_valid_collected_output_time": time.time() - start_time})
 
             # lazy load in data
             global examples
@@ -145,8 +143,7 @@ class PLQAModel(pl.LightningModule):
                     json_test_dict = json.load(f)
 
                 # PL issue 11242
-                wandb.log({"epoch_valid_load_data_time":
-                           time.time() - start_time})
+                # wandb.log({"epoch_valid_load_data_time": time.time() - start_time})
                 # self.log("epoch_valid_load_data_time", time.time() - start_time)
 
             # Create the squad_result object
