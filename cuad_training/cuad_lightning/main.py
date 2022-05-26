@@ -117,7 +117,7 @@ def main(args):
     dirpath='out/checkpoints/',
     filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_{args.model_name}_'+_checkpoint_ending,
     auto_insert_metric_name=False,
-    save_top_k=2,
+    save_top_k=args.top_k_checkpoints,
     save_weights_only=True
     )
     # Callback issues due to PL issue 11242
@@ -362,9 +362,9 @@ if __name__ == "__main__":
     # test_examples_chunk_size
     argparser.add_argument('--test_examples_chunk_size', type=int,
                             default=4, help="In testing the chunk size to use for processing data")
-    # Delete predictions after testing
-    argparser.add_argument('--delete_model_outputs_after_testing', type=str2bool, nargs='?',
-                        const=True, default=True, help="In the new logic we save the predictions as squad results, and these can be keept")
+    # Top k checkpoints
+    argparser.add_argument('--top_k_checkpoints', type=int,
+                        const=True, default=2, help="PL model checkpoint tok_k configuration on min val loss")
 
 
     args = argparser.parse_args()
