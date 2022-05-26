@@ -364,7 +364,7 @@ if __name__ == "__main__":
                             default=4, help="In testing the chunk size to use for processing data")
     # Top k checkpoints
     argparser.add_argument('--top_k_checkpoints', type=int,
-                        const=True, default=2, help="PL model checkpoint tok_k configuration on min val loss")
+                            default=2, help="PL model checkpoint tok_k configuration on min val loss")
 
 
     args = argparser.parse_args()
