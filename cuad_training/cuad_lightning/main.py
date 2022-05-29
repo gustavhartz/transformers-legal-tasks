@@ -376,10 +376,6 @@ if __name__ == "__main__":
     if args.test_model and not args.predict_file:
         logging.warning("You've set test_model to True but not provided a predict file.  Please provide a predict file or set test_model to False.")
         sys.exit(1)
-    if args.test_model and ((args.gpus > 1) or (len(args.specify_gpus)>1)):
-        logging.warning("You've set test_model to True but you have more than one GPU.  Testing does not work with more than one GPU.  Continuing with one unspecified GPU.")
-        args.gpus = 1
-        args.specify_gpus = []
 
     if args.model_type not in MODEL_CLASSES:
         raise ValueError("Unsupported model type {}. Might work but it's not tested".format(args.model_type))
