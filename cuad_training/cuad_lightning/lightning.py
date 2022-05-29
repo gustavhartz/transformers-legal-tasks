@@ -9,7 +9,6 @@ import time
 from utils_v2 import compute_predictions_logits_multi
 from utils import squad_evaluate
 from evaluate import get_results
-import wandb
 import logging
 logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -123,10 +122,6 @@ class PLQAModel(pl.LightningModule):
             logging.info(
                 f"Collected predictions from all the nodes. Processing time {time.time() - start_time}")
 
-            # PL issue 11242
-            # self.log("epoch_valid_collected_output_time", time.time() - start_time)
-            # wandb.log({"epoch_valid_collected_output_time": time.time() - start_time})
-
             # lazy load in data
             global examples
             global features
@@ -141,10 +136,6 @@ class PLQAModel(pl.LightningModule):
                 examples = torch.load(DATASET_PATH+"_examples")
                 with open(self.args.predict_file, "r") as f:
                     json_test_dict = json.load(f)
-
-                # PL issue 11242
-                # wandb.log({"epoch_valid_load_data_time": time.time() - start_time})
-                # self.log("epoch_valid_load_data_time", time.time() - start_time)
 
             # Create the squad_result object
             all_results = []
@@ -197,19 +188,6 @@ class PLQAModel(pl.LightningModule):
                 print(results)
                 print(res)
 
-            post_fix = "valid"
-            if self.args.test_model:
-                post_fix = "test"
-
-            # PL issue 11242
-            # for k, v in results.items():
-            #     wandb.log({f"performance_stats_{post_fix}_"+k: float(v)
-            #               if isinstance(v, int) else v})
-
-            # for k, v in res.items():
-            #     wandb.log({f"performance_AUPR_{post_fix}_"+k: float(v)
-            #                if isinstance(v, int) else v})
-
             logging.info(f"Finished evaluating predictions rank zero")
 
         # Force sync between processes related to logging
@@ -218,6 +196,11 @@ class PLQAModel(pl.LightningModule):
             f"Reached pl sync barrier on rank: {self.trainer.global_rank}")
         dist.barrier()
         if self.trainer.is_global_zero and not self.trainer.sanity_checking:
+
+            post_fix = "valid"
+            if self.args.test_model:
+                post_fix = "test"
+
             for k, v in results.items():
                 self.log(f"performance_stats_{post_fix}_"+k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)

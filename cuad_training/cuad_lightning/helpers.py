@@ -31,9 +31,12 @@ def make_dataset_path(args, evaluate: bool) -> str:
 
 
 def make_prediction_path(args, evaluate: bool) -> str:
+    post_fix = "valid"
+    if args.test_model:
+        post_fix = "test"
     DATASET_NAME = make_dataset_name(args, evaluate)
     dataset_path = os.path.join(
-        args.out_dir, "predictions", DATASET_NAME)
+        args.out_dir, "predictions", DATASET_NAME+"_predtype_"+post_fix)
     return dataset_path
 
 
