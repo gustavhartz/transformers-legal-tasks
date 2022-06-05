@@ -144,6 +144,35 @@ def get_raw_scores(examples, preds):
     return exact_scores, f1_scores
 
 
+def get_raw_scores_nbest(examples, preds, nbest=3):
+    """
+    Computes the exact and f1 scores from the examples and the model predictions
+    """
+    exact_scores = {}
+    f1_scores = {}
+
+    for example in examples:
+        qas_id = example.qas_id
+        gold_answers = [answer["text"]
+                        for answer in example.answers if normalize_answer(answer["text"])]
+
+        if not gold_answers:
+            # For unanswerable questions, only correct answer is empty string
+            gold_answers = [""]
+
+        if qas_id not in preds:
+            print("Missing prediction for %s" % qas_id)
+            continue
+
+        predictions = preds[qas_id]
+        exact_scores[qas_id] = max([max(compute_exact(
+            a, prediction['text']) for a in gold_answers) for prediction in predictions[:nbest]])
+        f1_scores[qas_id] = max([max(compute_f1(a, prediction['text'])
+                                for a in gold_answers) for prediction in predictions[:nbest]])
+
+    return exact_scores, f1_scores
+
+
 def apply_no_ans_threshold(scores, na_probs, qid_to_has_ans, na_prob_thresh):
     new_scores = {}
     for qid, s in scores.items():
@@ -278,6 +307,60 @@ def squad_evaluate(examples, preds, no_answer_probs=None, no_answer_probability_
         no_answer_probs = {k: 0.0 for k in preds}
 
     exact, f1 = get_raw_scores(examples, preds)
+
+    exact_threshold = apply_no_ans_threshold(
+        exact, no_answer_probs, qas_id_to_has_answer, no_answer_probability_threshold
+    )
+    f1_threshold = apply_no_ans_threshold(
+        f1, no_answer_probs, qas_id_to_has_answer, no_answer_probability_threshold)
+
+    evaluation = make_eval_dict(exact_threshold, f1_threshold)
+
+    if has_answer_qids:
+        has_ans_eval = make_eval_dict(
+            exact_threshold, f1_threshold, qid_list=has_answer_qids)
+        merge_eval(evaluation, has_ans_eval, "HasAns")
+
+    if no_answer_qids:
+        no_ans_eval = make_eval_dict(
+            exact_threshold, f1_threshold, qid_list=no_answer_qids)
+        merge_eval(evaluation, no_ans_eval, "NoAns")
+
+    if no_answer_probs:
+        find_all_best_thresh(evaluation, preds, exact, f1,
+                             no_answer_probs, qas_id_to_has_answer)
+
+    return evaluation
+
+
+def squad_evaluate_nbest(examples, n_best_path, no_answer_probs=None, no_answer_probability_threshold=1.0, n_best_size=3):
+    """Just like squad_evaluate, but instead allowing for nbest predictions which just the best score
+
+    Args:
+        examples (_type_): Squad examples
+        n_best_path (_type_): path to the best nbest predictions file
+        no_answer_probs (_type_, optional): same. Defaults to None.
+        no_answer_probability_threshold (float, optional): same. Defaults to 1.0.
+        n_best_size (int, optional): How many predictions to look at. Defaults to 3.
+
+    Returns:
+        _type_: _description_
+    """
+    # load preds
+    with open(n_best_path, 'r') as f:
+        preds = json.load(f)
+
+    qas_id_to_has_answer = {example.qas_id: bool(
+        example.answers) for example in examples}
+    has_answer_qids = [qas_id for qas_id,
+                       has_answer in qas_id_to_has_answer.items() if has_answer]
+    no_answer_qids = [qas_id for qas_id,
+                      has_answer in qas_id_to_has_answer.items() if not has_answer]
+
+    if no_answer_probs is None:
+        no_answer_probs = {k: 0.0 for k in preds}
+
+    exact, f1 = get_raw_scores_nbest(examples, preds, n_best_size)
 
     exact_threshold = apply_no_ans_threshold(
         exact, no_answer_probs, qas_id_to_has_answer, no_answer_probability_threshold

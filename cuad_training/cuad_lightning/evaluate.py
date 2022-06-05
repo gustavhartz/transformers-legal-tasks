@@ -181,10 +181,41 @@ def get_aupr(precisions, recalls):
     return aupr
 
 
-def get_results(args, n_best_predictions_path, gt_dict, gt_dict_extract_answers=True, include_model_info=True):
+def get_results(args, n_best_predictions_path, gt_dict, gt_dict_extract_answers=True, include_model_info=True, filter=None):
+    """
+
+    Args:
+        args (_type_): _description_
+        n_best_predictions_path (_type_): _description_
+        gt_dict (_type_): _description_
+        gt_dict_extract_answers (bool, optional): _description_. Defaults to True.
+        include_model_info (bool, optional): _description_. Defaults to True.
+        filter (_type_, optional): Filters the results to keep a specific subset of questions. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+
     gt_dict = get_answers(gt_dict) if gt_dict_extract_answers else gt_dict
 
     pred_dict = load_json(n_best_predictions_path)
+
+    assert sorted(list(pred_dict.keys())) == sorted(list(gt_dict.keys()))
+
+    # Remove examples with empty answers
+    to_rm = []
+    if filter == "No Ans":
+        to_rm = [k for k, v in gt_dict.items() if not v]
+        print("Removing {} examples with empty answers".format(len(to_rm)))
+    elif filter == "Has Ans":
+        to_rm = [k for k, v in gt_dict.items() if v]
+        print("Removing {} examples with answers".format(len(to_rm)))
+    elif filter:
+        to_rm = [k for k, v in gt_dict.items() if filter not in k]
+        print("Removing {} examples with answers".format(len(to_rm)))
+    for k in to_rm:
+        gt_dict.pop(k, None)
+        pred_dict.pop(k, None)
 
     assert sorted(list(pred_dict.keys())) == sorted(list(gt_dict.keys()))
 

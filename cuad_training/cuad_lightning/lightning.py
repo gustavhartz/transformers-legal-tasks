@@ -7,7 +7,7 @@ import json
 import torch.distributed as dist
 import time
 from utils_v2 import compute_predictions_logits_multi
-from utils import squad_evaluate
+from utils import squad_evaluate, squad_evaluate_nbest
 from evaluate import get_results
 import logging
 logging.basicConfig(
@@ -178,6 +178,9 @@ class PLQAModel(pl.LightningModule):
             logging.info("Evaluating predictions")
             # Handle results
             results = squad_evaluate(examples, predictions)
+
+            results_n_best = squad_evaluate_nbest(
+                examples, output_nbest_file, n_best_size=self.args.n_best_size_squad_evaluate)
             logging.info("Getting results")
             res = get_results(self.args, output_nbest_file,
                               gt_dict=json_test_dict, include_model_info=False)
@@ -203,6 +206,10 @@ class PLQAModel(pl.LightningModule):
 
             for k, v in results.items():
                 self.log(f"performance_stats_{post_fix}_"+k, float(v)
+                         if isinstance(v, int) else v, rank_zero_only=True)
+
+            for k, v in results_n_best.items():
+                self.log(f"performance_stats_nbest_{post_fix}_"+k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)
 
             for k, v in res.items():

@@ -314,9 +314,12 @@ if __name__ == "__main__":
     # Project name
     argparser.add_argument('--project_name', type=str,
                             default='roberta_cuad_checkpoint', help='Project name')
-    # N best size
+    # N best size AUPR
     argparser.add_argument('--n_best_size', type=int,
                             default=20, help='N best size')
+    # N best size squad_evaluate
+    argparser.add_argument('--n_best_size_squad_evaluate', type=int,
+                            default=3, help='N best size for the second squad evaluation')
     # Dataset name
     argparser.add_argument('--dataset_name', type=str,
                             default='CUAD', help='Dataset name')
