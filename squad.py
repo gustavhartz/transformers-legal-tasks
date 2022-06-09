@@ -155,21 +155,16 @@ def squad_convert_example_to_features(
 
     if is_training and not example.is_impossible:
         for idx, (start_position, end_position) in enumerate(example.answer_positions):
-            try:
-                tok_start_position = orig_to_tok_index[start_position]
-                if example.end_position < len(example.doc_tokens) - 1:
-                    tok_end_position = orig_to_tok_index[end_position + 1] - 1
-                else:
-                    tok_end_position = len(all_doc_tokens) - 1
-                (tok_start_position, tok_end_position) = _improve_answer_span(
-                    all_doc_tokens, tok_start_position, tok_end_position, tokenizer, example.answers[
-                        idx]['text']
-                )
-                token_positions.append((tok_start_position, tok_end_position))
-            except Exception as e:
-                logger.warning(f"Error in _improve_answer_span: {e}")
-                logger.warning(f"example: {example.qas_id}\n {example.title}")
-                continue
+            tok_start_position = orig_to_tok_index[start_position]
+            if example.end_position < len(example.doc_tokens) - 1:
+                tok_end_position = orig_to_tok_index[end_position + 1] - 1
+            else:
+                tok_end_position = len(all_doc_tokens) - 1
+            (tok_start_position, tok_end_position) = _improve_answer_span(
+                all_doc_tokens, tok_start_position, tok_end_position, tokenizer, example.answers[
+                    idx]['text']
+            )
+            token_positions.append((tok_start_position, tok_end_position))
 
     spans = []
 
