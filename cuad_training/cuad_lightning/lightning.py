@@ -10,6 +10,7 @@ from utils_v2 import compute_predictions_logits_multi
 from utils import squad_evaluate, squad_evaluate_nbest
 from evaluate import get_results
 import logging
+import pandas as pd
 logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
     level=logging.INFO,
@@ -176,20 +177,55 @@ class PLQAModel(pl.LightningModule):
                 chunk_size=self.args.test_examples_chunk_size,
             )
             logging.info("Evaluating predictions")
-            # Handle results
+            ##################
+            # Handle results #
+            ##################
+
+            # Keept to ensure correct logic of the evaluation in n_best
             results = squad_evaluate(examples, predictions)
 
-            results_n_best = squad_evaluate_nbest(
-                examples, output_nbest_file, n_best_size=self.args.n_best_size_squad_evaluate)
-            logging.info("Getting results")
+            results_1, exact_1, f1_1 = squad_evaluate_nbest(
+                examples, output_nbest_file, n_best_size=1, return_dict=True).values()
+
+            results_n_best, exact_n_best, f1_n_best = squad_evaluate_nbest(
+                examples, output_nbest_file, n_best_size=self.args.n_best_size_squad_evaluate, return_dict=True).values()
+
             res = get_results(self.args, output_nbest_file,
                               gt_dict=json_test_dict, include_model_info=False)
+            logging.info("Results obtained")
 
-            # Report metrics
-            if self.args.verbose:
-                logging.info("***** Eval results *****")
-                print(results)
-                print(res)
+            try:
+                assert results_1 == results
+            except AssertionError:
+                logging.error(
+                    f"Results do not match for n_best_size=1 and original eval framework")
+                logging.error(f"Original results: {results}")
+                logging.error(f"New results: {results_1}")
+
+            #########################################################################################
+            # Question category level results - Adopted from performance across categories notebook #
+            #########################################################################################
+            data = []
+            for k, v in exact_1.items():
+                # question name, question type, value, category
+                data.append([k, k.split("__")[1], v, "em nbest=1"])
+
+            for k, v in f1_1.items():
+                # question name, question type, value, category
+                data.append([k, k.split("__")[1], v, "f1 nbest=1"])
+
+            # add the nbest=3 to df
+            for k, v in exact_n_best.items():
+                # question name, question type, value, category
+                data.append([k, k.split("__")[1], v, "em nbest=3"])
+
+            for k, v in f1_n_best.items():
+                # question name, question type, value, category
+                data.append([k, k.split("__")[1], v, "f1 nbest=3"])
+
+            df = pd.DataFrame(
+                data, columns=["question_name", "question_type", "value", "category"])
+            df = df.groupby(["question_type", "category"]).mean().reset_index()
 
             logging.info(f"Finished evaluating predictions rank zero")
 
@@ -199,22 +235,20 @@ class PLQAModel(pl.LightningModule):
             f"Reached pl sync barrier on rank: {self.trainer.global_rank}")
         dist.barrier()
         if self.trainer.is_global_zero and not self.trainer.sanity_checking:
-
-            post_fix = "valid"
-            if self.args.test_model:
-                post_fix = "test"
-
             for k, v in results.items():
-                self.log(f"performance_stats_{post_fix}_"+k, float(v)
+                self.log(f"top_1"+k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)
 
             for k, v in results_n_best.items():
-                self.log(f"performance_stats_nbest_{post_fix}_"+k, float(v)
+                self.log(f"nbest_"+k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)
 
             for k, v in res.items():
-                self.log(f"performance_AUPR_{post_fix}_"+k, float(v)
+                self.log(k, float(v)
                          if isinstance(v, int) else v, rank_zero_only=True)
+            for idx, row in df.iterrows():
+                self.log("spec_"+row.question_type+row.category, float(row.value)
+                         if isinstance(v, int) else 0, rank_zero_only=True)
             logging.info(f"Finished logging rank zero dist barrier")
         logging.info(
             f"Passed pl sync barrier on rank: {self.trainer.global_rank}")

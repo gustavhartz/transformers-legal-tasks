@@ -333,7 +333,7 @@ def squad_evaluate(examples, preds, no_answer_probs=None, no_answer_probability_
     return evaluation
 
 
-def squad_evaluate_nbest(examples, n_best_path, no_answer_probs=None, no_answer_probability_threshold=1.0, n_best_size=3):
+def squad_evaluate_nbest(examples, n_best_path, no_answer_probs=None, no_answer_probability_threshold=1.0, n_best_size=3, return_dict=False):
     """Just like squad_evaluate, but instead allowing for nbest predictions which just the best score
 
     Args:
@@ -342,6 +342,7 @@ def squad_evaluate_nbest(examples, n_best_path, no_answer_probs=None, no_answer_
         no_answer_probs (_type_, optional): same. Defaults to None.
         no_answer_probability_threshold (float, optional): same. Defaults to 1.0.
         n_best_size (int, optional): How many predictions to look at. Defaults to 3.
+        return_dict (bool, optional): Whether to return a dict of the evaluation. Defaults to False.
 
     Returns:
         _type_: _description_
@@ -383,6 +384,9 @@ def squad_evaluate_nbest(examples, n_best_path, no_answer_probs=None, no_answer_
     if no_answer_probs:
         find_all_best_thresh(evaluation, preds, exact, f1,
                              no_answer_probs, qas_id_to_has_answer)
+
+    if return_dict:
+        return {"evaluation": evaluation, "exact": exact, "f1": f1}
 
     return evaluation
 
