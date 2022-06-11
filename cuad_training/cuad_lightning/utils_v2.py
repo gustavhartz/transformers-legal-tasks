@@ -346,7 +346,7 @@ def cuad_convert_example_output_to_prediction(
     return all_predictions, all_nbest_json, scores_diff_json
 
 
-def get_balanced_dataset_v2(dataset, features, keep_frac=1, return_positives_dict=False, q_post_process=None):
+def get_balanced_dataset_v2(dataset, tokenizer, keep_frac=1, return_positives_dict=False):
     """
     returns a new dataset, where all positive are kept and keep_frac fraction of negative examples are kept.
     """
@@ -357,15 +357,16 @@ def get_balanced_dataset_v2(dataset, features, keep_frac=1, return_positives_dic
     q_count = defaultdict(int)
     keep_idx = []
     for idx, ele in tqdm(enumerate(dataset), desc='Finding negative examples', total=len(dataset)):
-        # Get feature id
-        _, _, _, _, _, _, _, _, feature_index = ele
-        feat = features[feature_index.item()]
-        contract, question = feat.qas_id.split('__')
+        # Get impossible and inputids
+        input_ids, attention_masks, token_type_ids, start_positions, end_positions, cls_index, p_mask, is_impossible, feature_index = ele
 
-        if q_post_process == 'train_separate_questions':
-            question = '_'.join(question.split('_')[:-1])
+        # Extract question part from input_ids
+        q_span = input_ids[1:(input_ids == tokenizer.sep_token_id).nonzero(
+            as_tuple=True)[0][0].item()]
+        # Get question category
+        question = tokenizer.decode(q_span).split('"')[1].split('"')[0]
 
-        if not feat.is_impossible:
+        if not is_impossible:
             q_count[question] += 1
             keep_idx.append(idx)
 

@@ -23,9 +23,9 @@ import os
 import torch.distributed as dist
 
 logging.basicConfig(
-        format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
-        level=logging.INFO,
-        datefmt='%Y-%m-%d %H:%M:%S')
+    format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
+    level=logging.INFO,
+    datefmt='%Y-%m-%d %H:%M:%S')
 
 # Model types confirmed to be working
 MODEL_CLASSES = set(['roberta', 'deberta'])
@@ -34,11 +34,11 @@ MODEL_CLASSES = set(['roberta', 'deberta'])
 def main(args):
     global hparams
     # run specific random int
-    rand_v = random.randint(0,10000)
+    rand_v = random.randint(0, 10000)
     args.random_int = rand_v
     hparams = vars(args)
     set_seed(hparams)
-    
+
     # Tokenizer and model
     logging.info("Loading Tokenizer and model")
     tokenizer = AutoTokenizer.from_pretrained(
@@ -57,26 +57,28 @@ def main(args):
     size_1 = robertaQA.num_parameters()
     size_2 = -1
     if args.delete_transformer_layers:
-        logging.info(f"Deleting transformer layers {args.delete_transformer_layers}")
+        logging.info(
+            f"Deleting transformer layers {args.delete_transformer_layers}")
         robertaQA = delete_encoding_layers(args, robertaQA)
         size_2 = robertaQA.num_parameters()
         logging.info(f"Deleted {size_1-size_2} parameters")
         # Percent decreased model size
-        logging.info(f"New model size percentage of old : {int(100*size_2/size_1)}%")
+        logging.info(
+            f"New model size percentage of old : {int(100*size_2/size_1)}%")
         # Free up memory from deleted layers
         gc.collect()
-    
+
     hparams['model_params'] = size_1 if not args.delete_transformer_layers else size_2
-    hparams['deleted_layers'] = "" if not args.delete_transformer_layers else str(args.delete_transformer_layers)
+    hparams['deleted_layers'] = "" if not args.delete_transformer_layers else str(
+        args.delete_transformer_layers)
     robertaQA.train()
     model = QAModel(hparams, robertaQA)
-
 
     # Valid/test dataset
     logging.info("Loading val/test dataset")
     valid_dataset = get_or_create_dataset(
         args, tokenizer, evaluate=True)
-    
+
     val_loader = DataLoader(
         valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.dataset_num_workers, drop_last=False)
     # Train dataset
@@ -87,15 +89,18 @@ def main(args):
 
     # Balanced dataset logic
     if args.dataset_balance_frac:
-        logging.info("Using a balancing dataset. Loading features")
-        features =  torch.load(make_dataset_path(args, False)+"_features")
-        train_dataset = get_balanced_dataset_v2(dataset, features, keep_frac=args.dataset_balance_frac, q_post_process=args.balanced_dataset_postprocess)
+        logging.info("Using balanced dataset v2")
+        train_dataset, q_count = get_balanced_dataset_v2(
+            dataset, tokenizer, keep_frac=args.dataset_balance_frac, return_positives_dict=True)
+        logging.info(f"Total annotations: {sum(q_count.values())}")
+        logging.info(f"Question category annotations: {q_count}")
     else:
+        logging.info("Using balanced dataset v1")
         train_dataset = get_balanced_dataset(dataset)
 
     logging.info(f"Dataset balanced size Train: {len(train_dataset)}")
 
-     # Terminate if only create dataset
+    # Terminate if only create dataset
     if args.only_create_dataset:
         logging.info("Created dataset. Exiting")
         return
@@ -121,38 +126,39 @@ def main(args):
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     _checkpoint_ending = 'epoch{epoch:02d}-val_loss{epoch_valid_loss:.3f}-aupr{performance_AUPR_valid_aupr:.3f}-aupr80rec{performance_AUPR_valid_prec_at_80_recall:.3f}-hasans{performance_stats_valid_HasAns_f1:.3f}-global_step{step}'
-    
+
     checkpoint_val_loss_callback = ModelCheckpoint(
-    monitor='epoch_valid_loss',
-    dirpath='out/checkpoints/',
-    filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_{args.model_name}_'+_checkpoint_ending,
-    auto_insert_metric_name=False,
-    save_top_k=args.top_k_checkpoints,
-    save_weights_only=True
+        monitor='epoch_valid_loss',
+        dirpath='out/checkpoints/',
+        filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_{args.model_name}_' +
+        _checkpoint_ending,
+        auto_insert_metric_name=False,
+        save_top_k=args.top_k_checkpoints,
+        save_weights_only=True
     )
     # Callback issues due to PL issue 11242
     checkpoint_aupr_callback = ModelCheckpoint(
-    monitor='performance_AUPR_valid_aupr',
-    dirpath='out/checkpoints/',
-    mode='max',
-    filename=f'checkpoint-precision-name_{make_dataset_name_base(args)}_{args.model_name}_'+_checkpoint_ending,
-    auto_insert_metric_name=False,
-    save_top_k=2,
-    save_weights_only=True
+        monitor='performance_AUPR_valid_aupr',
+        dirpath='out/checkpoints/',
+        mode='max',
+        filename=f'checkpoint-precision-name_{make_dataset_name_base(args)}_{args.model_name}_' +
+        _checkpoint_ending,
+        auto_insert_metric_name=False,
+        save_top_k=2,
+        save_weights_only=True
     )
-
 
     wandb_logger = WandbLogger(
         project=args.project_name, entity="gustavhartz")
 
-    gpus=args.gpus
+    gpus = args.gpus
     if args.specify_gpus:
-        gpus=args.specify_gpus
+        gpus = args.specify_gpus
 
     trainer = pl.Trainer(gpus=gpus, max_epochs=args.num_train_epochs,
-                         logger=wandb_logger, 
+                         logger=wandb_logger,
                          strategy='ddp',
-                         callbacks=[lr_monitor, checkpoint_val_loss_callback], 
+                         callbacks=[lr_monitor, checkpoint_val_loss_callback],
                          auto_select_gpus=args.auto_select_gpus,
                          val_check_interval=args.val_check_interval)
     # if test model
@@ -161,13 +167,16 @@ def main(args):
         del train_loader
         gc.collect()
         logging.info("Running test inference")
-        trainer.test(litModel,val_loader, ckpt_path=args.resume_from_pl_checkpoint)
+        trainer.test(litModel, val_loader,
+                     ckpt_path=args.resume_from_pl_checkpoint)
         dist.barrier()
         sys.exit(0)
     # Training
     logging.info("Starting training")
-    trainer.fit(litModel, train_loader, val_loader, ckpt_path=args.resume_from_pl_checkpoint)
+    trainer.fit(litModel, train_loader, val_loader,
+                ckpt_path=args.resume_from_pl_checkpoint)
     logging.info("Training finished")
+
 
 def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
     processor = SquadV2Processor()
@@ -179,13 +188,13 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
     # Use train processor on both train and valid for getting validation loss
     filename = args.predict_file if evaluate else args.train_file
     examples = processor.get_train_examples(
-            None, filename=filename)
+        None, filename=filename)
     if not load_data:
         logging.info(f"Saving {len(examples)} examples")
         torch.save(examples, dataset_path+"_examples")
 
-
-    logging.info("Creating features... This is a long running process and can take multiple hours")
+    logging.info(
+        "Creating features... This is a long running process and can take multiple hours")
     features, dataset = squad_convert_examples_to_features(
         examples=examples,
         tokenizer=tokenizer,
@@ -196,9 +205,10 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
         return_dataset="pt",
         threads=args.dataset_creation_threads,
         only_first_answer_in_features=args.only_first_answer_in_features,
-        )
+    )
     # Assert that we are using the custom dataset with the feature indexes
-    assert len(dataset[0]) == 9, "Dataset is not the correct size. Did you remember to use the customs squad.py file in transformers?"
+    assert len(
+        dataset[0]) == 9, "Dataset is not the correct size. Did you remember to use the customs squad.py file in transformers?"
 
     # Free up memory
     del examples
@@ -210,9 +220,10 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
         if not os.path.exists(os.path.join(args.out_dir, "features")):
             os.mkdir(os.path.join(args.out_dir, "features"))
         # dump features to file
-        logging.info(f"Saving the individual features to {os.path.join(args.out_dir, 'features')}")
+        logging.info(
+            f"Saving the individual features to {os.path.join(args.out_dir, 'features')}")
         for idx, feature in enumerate(features):
-            torch.save(feature, feature_path(args,idx))
+            torch.save(feature, feature_path(args, idx))
         logging.info(f"Saved the individual feature list files")
     logging.info("Saving features to cache file")
     torch.save(features, dataset_path+"_features")
@@ -221,7 +232,7 @@ def build_and_cache_dataset(args, tokenizer, dataset_path, evaluate=False):
     gc.collect()
     logging.info("Saving dataset to cache file")
     torch.save(dataset, dataset_path+"_dataset")
-    #Print stuff saved
+    # Print stuff saved
     logging.info(f"Saved dataset, features, and examples to: {dataset_path}")
     return dataset
 
@@ -230,7 +241,7 @@ def get_or_create_dataset(args, tokenizer, evaluate=False):
     dataset_path = make_dataset_path(args, evaluate)
     if args.cached_data and os.path.exists(dataset_path+"_dataset"):
         # Load dataset from cache if it exists
-        dataset= torch.load(dataset_path+"_dataset")
+        dataset = torch.load(dataset_path+"_dataset")
     else:
         logging.info("Creating dataset")
         dataset = build_and_cache_dataset(
@@ -250,8 +261,8 @@ if __name__ == "__main__":
     argparser.add_argument('--model_type', type=str,
                            default='roberta', help='Model type to use')
     # Learning rate
-    argparser.add_argument('--lr', type=float, 
-                            default=1e-4, help='Learning rate')
+    argparser.add_argument('--lr', type=float,
+                           default=1e-4, help='Learning rate')
     # Batch size
     argparser.add_argument('--batch_size', type=int,
                            default=8, help='Batch size')
@@ -290,7 +301,7 @@ if __name__ == "__main__":
                            default=512, help='Max sequence length')
     # Used cached data
     argparser.add_argument('--cached_data', type=str2bool, nargs='?',
-                        const=True, default=True, help='Use cached data')
+                           const=True, default=True, help='Use cached data')
     # Train file
     argparser.add_argument('--train_file', type=str,
                            default='../../data/train_separate_questions.json', help='Train file')
@@ -299,10 +310,10 @@ if __name__ == "__main__":
                            default='../../data/test.json', help='Predict file')
     # Predict file type
     argparser.add_argument('--predict_file_version', type=str,
-                            default='test', help='Predict file version. This is used to determine the output file name as we have different versions of the test file')
+                           default='test', help='Predict file version. This is used to determine the output file name as we have different versions of the test file')
     # Train file type
     argparser.add_argument('--train_file_version', type=str,
-                            default='train', help='Train file version. This is used to determine the output file name as we have different versions of the train file')
+                           default='train', help='Train file version. This is used to determine the output file name as we have different versions of the train file')
     # Out dir
     argparser.add_argument('--out_dir', type=str,
                            default='./out', help='Out dir')
@@ -311,7 +322,7 @@ if __name__ == "__main__":
                            default='v1', help='Model version')
     # Do lower case
     argparser.add_argument('--do_lower_case', type=str2bool, nargs='?',
-                        const=True, default=True, help='Do lower case')
+                           const=True, default=True, help='Do lower case')
     # max query length
     argparser.add_argument('--max_query_length', type=int,
                            default=64, help='Max query length')
@@ -323,84 +334,78 @@ if __name__ == "__main__":
                            default=0.0, help='Null score diff threshold')
     # Project name
     argparser.add_argument('--project_name', type=str,
-                            default='roberta_cuad_checkpoint', help='Project name')
+                           default='roberta_cuad_checkpoint', help='Project name')
     # N best size AUPR
     argparser.add_argument('--n_best_size', type=int,
-                            default=20, help='N best size')
+                           default=20, help='N best size')
     # N best size squad_evaluate
     argparser.add_argument('--n_best_size_squad_evaluate', type=int,
-                            default=3, help='N best size for the second squad evaluation')
+                           default=3, help='N best size for the second squad evaluation')
     # Dataset name
     argparser.add_argument('--dataset_name', type=str,
-                            default='CUAD', help='Dataset name')
+                           default='CUAD', help='Dataset name')
     # Dataset numworkers
     argparser.add_argument('--dataset_num_workers', type=int,
-                            default=2, help='Dataset numworkers')
+                           default=2, help='Dataset numworkers')
     # Dataset creation threads
     argparser.add_argument('--dataset_creation_threads', type=int,
-                            default=60, help='Dataset creation threads')
+                           default=60, help='Dataset creation threads')
     # Test model
     argparser.add_argument('--test_model', type=str2bool, nargs='?',
-                            const=True, default=False, help='Test model. This will not train the model and only run a single evaluation on the predict file using the CUAD metrics')
+                           const=True, default=False, help='Test model. This will not train the model and only run a single evaluation on the predict file using the CUAD metrics')
     # Verbose
     argparser.add_argument('--verbose', type=bool,
-                            default=False, help='Verbose')
+                           default=False, help='Verbose')
     # Delete transformer layers option
     argparser.add_argument("--delete_transformer_layers", nargs='+',
-                            help='Delete layers. Used like --delete_transformer_layers 9 10 11. ', type=int, default=[])
+                           help='Delete layers. Used like --delete_transformer_layers 9 10 11. ', type=int, default=[])
     # Autoselect gpus
     argparser.add_argument('--auto_select_gpus', type=str2bool, nargs='?',
-                        const=True, default=False, help='Autoselect gpus in pytorch lightning')
+                           const=True, default=False, help='Autoselect gpus in pytorch lightning')
     # Specify gpus
     argparser.add_argument("--specify_gpus", nargs='+',
                            help='Used if a specific device should be used in pl training. For using device 1 and 2 use: --specific_gpus 1 2', type=int, default=[])
     # Resume from checkpoint
-    argparser.add_argument('--resume_from_pl_checkpoint', type=str, 
-                            default=None, help='Path to pytorch lightning checkpoint')
+    argparser.add_argument('--resume_from_pl_checkpoint', type=str,
+                           default=None, help='Path to pytorch lightning checkpoint')
     # Pytorch model load
     argparser.add_argument('--lit_model_path', type=str,
-                            default=None, help='Path to pytorch model')
+                           default=None, help='Path to pytorch model')
     # Val check interval 0.5
     argparser.add_argument('--val_check_interval', type=float,
-                            default=0.5, help='Val check interval. See pytorch lightning documentation for more info')
+                           default=0.5, help='Val check interval. See pytorch lightning documentation for more info')
     # only_first_answer_examples
     argparser.add_argument('--only_first_answer_in_features', type=str2bool, nargs='?',
-                        const=True, default=True, help='When creating examples only use the first answer for each question')
+                           const=True, default=True, help='When creating examples only use the first answer for each question')
     # only_create_dataset
     argparser.add_argument('--only_create_dataset', type=str2bool, nargs='?',
-                        const=True, default=False, help='Terminate after creating dataset')
+                           const=True, default=False, help='Terminate after creating dataset')
     # test_examples_workers
     argparser.add_argument('--test_examples_workers', type=int,
-                            default=4, help='In testing the number of workers to use for processing data')
+                           default=4, help='In testing the number of workers to use for processing data')
     # test_examples_chunk_size
     argparser.add_argument('--test_examples_chunk_size', type=int,
-                            default=4, help="In testing the chunk size to use for processing data")
+                           default=4, help="In testing the chunk size to use for processing data")
     # Top k checkpoints
     argparser.add_argument('--top_k_checkpoints', type=int,
-                            default=2, help="PL model checkpoint tok_k configuration on min val loss")
+                           default=2, help="PL model checkpoint tok_k configuration on min val loss")
     # Dataset type defined by the frac
     argparser.add_argument('--dataset_balance_frac', type=float,
-                            default=None, help="Use to trigger balanced dataset creation and define the frac empty datapoints to use per category. 1 is same, 2 is twice as many")
-    # Balanced dataset postprocess
-    argparser.add_argument('--balanced_dataset_postprocess', type=str,
-                            default=None, help="Use to trigger postprocessing of the balanced dataset. This is used to balance the dataset based on the frac defined in --dataset_balance_frac. Only value is 'q_post_process'")
+                           default=None, help="Use to trigger balanced dataset creation and define the frac empty datapoints to use per category. 1 is same, 2 is twice as many")
 
     args = argparser.parse_args()
     if args.doc_stride >= args.max_seq_length - args.max_query_length:
         logging.warning("You've set a doc stride which may be superior to the document length in some "
-            "examples. This could result in errors when building features from the examples. Please reduce the doc "
-            "stride or increase the maximum length to ensure the features are correctly built."
-        )
+                        "examples. This could result in errors when building features from the examples. Please reduce the doc "
+                        "stride or increase the maximum length to ensure the features are correctly built."
+                        )
     if args.test_model and not args.predict_file:
-        logging.warning("You've set test_model to True but not provided a predict file.  Please provide a predict file or set test_model to False.")
+        logging.warning(
+            "You've set test_model to True but not provided a predict file.  Please provide a predict file or set test_model to False.")
         sys.exit(1)
 
     if args.model_type not in MODEL_CLASSES:
-        raise ValueError("Unsupported model type {}. Might work but it's not tested".format(args.model_type))
-    
-    if args.dataset_balance_frac is None and args.balanced_dataset_postprocess is not None:
-        logging.warning("You've set a balanced dataset postprocess but not provided a dataset balance frac.  Please provide a dataset balance frac or set balanced_dataset_postprocess to None.")
-        sys.exit(1)
+        raise ValueError(
+            "Unsupported model type {}. Might work but it's not tested".format(args.model_type))
 
     main(args)
-    
