@@ -1,4 +1,5 @@
 # Run training of the model using pytorch lightning
+from soupsieve import match
 from lightning import PLQAModel
 from models import QAModel
 import pytorch_lightning as pl
@@ -10,6 +11,7 @@ from transformers import AutoTokenizer, AutoConfig, AutoModelForQuestionAnswerin
 import argparse
 import os
 from data import get_balanced_dataset
+from utils_v2 import get_balanced_dataset_v2
 import logging
 import gc
 import sys
@@ -83,13 +85,21 @@ def main(args):
         args, tokenizer, evaluate=False)
     logging.info(f"Total dataset size Train: {len(dataset)}")
 
-    # Terminate if only create dataset
+    # Balanced dataset logic
+    if args.dataset_balance_frac:
+        logging.info("Using a balancing dataset. Loading features")
+        features =  torch.load(make_dataset_path(args, False)+"_features")
+        train_dataset = get_balanced_dataset_v2(dataset, features, keep_frac=args.dataset_balance_frac, q_post_process=args.balanced_dataset_postprocess)
+    else:
+        train_dataset = get_balanced_dataset(dataset)
+
+    logging.info(f"Dataset balanced size Train: {len(train_dataset)}")
+
+     # Terminate if only create dataset
     if args.only_create_dataset:
         logging.info("Created dataset. Exiting")
         return
 
-    train_dataset = get_balanced_dataset(dataset)
-    logging.info(f"Dataset balanced size Train: {len(train_dataset)}")
     del dataset
     gc.collect()
     logging.info(f"Batch size: {args.batch_size}")
@@ -368,7 +378,12 @@ if __name__ == "__main__":
     # Top k checkpoints
     argparser.add_argument('--top_k_checkpoints', type=int,
                             default=2, help="PL model checkpoint tok_k configuration on min val loss")
-
+    # Dataset type defined by the frac
+    argparser.add_argument('--dataset_balance_frac', type=float,
+                            default=None, help="Use to trigger balanced dataset creation and define the frac empty datapoints to use per category. 1 is same, 2 is twice as many")
+    # Balanced dataset postprocess
+    argparser.add_argument('--balanced_dataset_postprocess', type=str,
+                            default=None, help="Use to trigger postprocessing of the balanced dataset. This is used to balance the dataset based on the frac defined in --dataset_balance_frac. Only value is 'q_post_process'")
 
     args = argparser.parse_args()
     if args.doc_stride >= args.max_seq_length - args.max_query_length:
@@ -382,6 +397,10 @@ if __name__ == "__main__":
 
     if args.model_type not in MODEL_CLASSES:
         raise ValueError("Unsupported model type {}. Might work but it's not tested".format(args.model_type))
+    
+    if args.dataset_balance_frac is None and args.balanced_dataset_postprocess is not None:
+        logging.warning("You've set a balanced dataset postprocess but not provided a dataset balance frac.  Please provide a dataset balance frac or set balanced_dataset_postprocess to None.")
+        sys.exit(1)
 
     main(args)
     

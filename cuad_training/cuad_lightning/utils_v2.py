@@ -1,3 +1,5 @@
+from collections import defaultdict
+import numpy as np
 from transformers.utils import logging
 import json
 import collections
@@ -342,3 +344,41 @@ def cuad_convert_example_output_to_prediction(
     all_nbest_json[example.qas_id] = nbest_json
 
     return all_predictions, all_nbest_json, scores_diff_json
+
+
+def get_balanced_dataset_v2(dataset, features, keep_frac=1, return_positives_dict=False, q_post_process=None):
+    """
+    returns a new dataset, where all positive are kept and keep_frac fraction of negative examples are kept.
+    """
+    # assert positive frac
+    assert keep_frac > 0, "keep_frac must be greater than 0"
+
+    neg_ids = defaultdict(list)
+    q_count = defaultdict(int)
+    keep_idx = []
+    for idx, ele in tqdm(enumerate(dataset), desc='Finding negative examples', total=len(dataset)):
+        # Get feature id
+        _, _, _, _, _, _, _, _, feature_index = ele
+        feat = features[feature_index.item()]
+        contract, question = feat.qas_id.split('__')
+
+        if q_post_process == 'train_separate_questions':
+            question = '_'.join(question.split('_')[:-1])
+
+        if not feat.is_impossible:
+            q_count[question] += 1
+            keep_idx.append(idx)
+
+        else:
+            neg_ids[question].append(idx)
+    # Get balanced dataset
+    for k, v in q_count.items():
+        if v >= 1:
+            keep_idx.extend(np.random.choice(neg_ids[k], size=min(
+                int(v*keep_frac), len(neg_ids[k])), replace=False).tolist())
+    assert len(keep_idx) == len(set(keep_idx))
+    subset_dataset = torch.utils.data.Subset(dataset, keep_idx)
+
+    if return_positives_dict:
+        return subset_dataset, q_count
+    return subset_dataset
