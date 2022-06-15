@@ -780,7 +780,7 @@ def delete_encoding_layers(args, model):
         _type_: copy of model with deleted layers.
     """
     del_set = set(args.delete_transformer_layers)
-    oldModuleList = getattr(model, args.model_type).encoder.layer
+    oldModuleList = model.encoder.layer
     newModuleList = torch.nn.ModuleList()
 
     # Now iterate over all layers, only keepign only the relevant layers.
@@ -793,6 +793,6 @@ def delete_encoding_layers(args, model):
 
     # create a copy of the model, modify it with the new list, and return
     copyOfModel = copy.deepcopy(model)
-    getattr(copyOfModel, args.model_type).encoder.layer = newModuleList
+    copyOfModel.encoder.layer = newModuleList
 
     return copyOfModel

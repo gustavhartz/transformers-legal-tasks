@@ -79,7 +79,7 @@ def main(args):
     if args.delete_transformer_layers:
         logging.info(
             f"Deleting transformer layers {args.delete_transformer_layers}")
-        robertaQA = delete_encoding_layers(args, robertaQA)
+        model.model = delete_encoding_layers(args, model.model)
         size_2 = robertaQA.num_parameters()
         logging.info(f"Deleted {size_1-size_2} parameters")
         # Percent decreased model size
