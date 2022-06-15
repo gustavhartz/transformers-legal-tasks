@@ -1,5 +1,6 @@
 # Run training of the model using pytorch lightning
 from soupsieve import match
+from collections import OrderedDict
 from lightning import PLQAModel
 from models import QAModel
 import pytorch_lightning as pl
@@ -53,6 +54,25 @@ def main(args):
         config=config,
         cache_dir=None,
     )
+    robertaQA.train()
+    model = QAModel(hparams, robertaQA)
+
+    # Checkpoint loading will fail if we delete layer due to mismatch between dicts
+    if args.resume_from_pl_checkpoint and args.delete_transformer_layers:
+        # load state dict
+        state_dict = torch.load(
+            args.resume_from_pl_checkpoint, map_location=torch.device('cpu'))
+        state_dict = state_dict['state_dict']
+
+        # Cleanup of naming used in the pl checkpoint #TODO: Less hardcoded
+        state_dict = OrderedDict((k[6:] if 'model.' in k else k, v)
+                                 for k, v in state_dict.items())
+
+        model.load_state_dict(state_dict)
+
+        # ensure it's not reloaded
+        args.resume_from_pl_checkpoint = None
+
     # Delete layers if specified and add size
     size_1 = robertaQA.num_parameters()
     size_2 = -1
@@ -68,12 +88,6 @@ def main(args):
         # Free up memory from deleted layers
         gc.collect()
 
-    hparams['model_params'] = size_1 if not args.delete_transformer_layers else size_2
-    hparams['deleted_layers'] = "" if not args.delete_transformer_layers else str(
-        args.delete_transformer_layers)
-    robertaQA.train()
-    model = QAModel(hparams, robertaQA)
-
     # Valid/test dataset
     logging.info("Loading val/test dataset")
     valid_dataset = get_or_create_dataset(
@@ -87,7 +101,7 @@ def main(args):
         args, tokenizer, evaluate=False)
     logging.info(f"Total dataset size Train: {len(dataset)}")
 
-    # Balanced dataset logic
+    # Balanced dataset logic and rank zero
     if args.dataset_balance_frac:
         logging.info("Using balanced dataset v2")
         train_dataset, q_count = get_balanced_dataset_v2(
@@ -168,7 +182,7 @@ def main(args):
         gc.collect()
         logging.info("Running test inference")
         trainer.test(litModel, val_loader,
-                     ckpt_path=args.resume_from_pl_checkpoint)
+                     ckpt_path=args.resume_from_pl_checkpoint if not args.delete_transformer_layers else None)
         dist.barrier()
         sys.exit(0)
     # Training
@@ -403,6 +417,11 @@ if __name__ == "__main__":
         logging.warning(
             "You've set test_model to True but not provided a predict file.  Please provide a predict file or set test_model to False.")
         sys.exit(1)
+
+    # Only support the model from a checkpoint if we delete layers. Very hardcoded for now.
+    if args.delete_transformer_layers and args.resume_from_pl_checkpoint:
+        logging.warning(
+            "You've set delete_transformer_layers to True but also provided a resume_from_pl_checkpoint.  This only allows for loading the model state dict and is very hardcoded. Might not work")
 
     if args.model_type not in MODEL_CLASSES:
         raise ValueError(
