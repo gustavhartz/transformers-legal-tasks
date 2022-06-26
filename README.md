@@ -58,12 +58,15 @@ pip install pytorch-lightning
 The thesis makes references to the code used for training transformers on SQuAD. This can be found from the commit history, but has been removed from the final repository to improve readability since the code was not pretty.
 
 ## Using it on a contract example
+
+The best model is now available through Hugging Face 🤗 `gustavhartz/roberta-base-cuad-finetuned`
+
 ```python
 # Requirements
 from transformers import pipeline
 import PyPDF2
 
-pipe = pipeline("question-answering", model="Rakib/roberta-base-on-cuad", device=0)
+pipe = pipeline("question-answering", model="gustavhartz/roberta-base-cuad-finetuned", device=0)
 
 # The contract to investigate 
 pdf_file = open('data/CUAD_v1/full_contract_pdf/Part_I/Affiliate_Agreements/LinkPlusCorp_20050802_8-K_EX-10_3240252_EX-10_Affiliate Agreement.pdf', 'rb')
