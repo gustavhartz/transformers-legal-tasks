@@ -399,8 +399,19 @@ if __name__ == "__main__":
     # Prediction logic used. V2 is the new one discussed in the paper inspired by the Huggingface QA pipeline approach
     argparser.add_argument('--prediction_logic', type=str,
                            default='v1', help='Use to trigger prediction logic. v1 is the original logic, v2 is the logic used in the paper')
+    # Working directory
+    argparser.add_argument('--working_dir', type=str,
+                           default=None, help='Set/Change working directory')
 
     args = argparser.parse_args()
+
+    if args.working_dir is not None:
+        cur_dir = os.getcwd()
+        if args.working_dir != cur_dir:
+            print("Current directory is {}. Changing to {}".format(
+                cur_dir, args.working_dir))
+            os.chdir(args.working_dir)
+
     if args.doc_stride >= args.max_seq_length - args.max_query_length:
         logging.warning("You've set a doc stride which may be superior to the document length in some "
                         "examples. This could result in errors when building features from the examples. Please reduce the doc "
