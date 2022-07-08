@@ -1,5 +1,4 @@
 # Run training of the model using pytorch lightning
-from soupsieve import match
 from collections import OrderedDict
 from lightning import PLQAModel
 from models import QAModel

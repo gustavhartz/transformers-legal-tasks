@@ -3,7 +3,7 @@
 ### -- specify queue -- 
 #BSUB -q hpc
 ### -- set the job Name -- 
-#BSUB -J Python_Test
+#BSUB -J CUAD_Training
 ### -- ask for number of cores (default: 1) -- 
 #BSUB -n 32 
 ### -- specify that the cores must be on the same host -- 
@@ -29,7 +29,7 @@
 
 # here follow the commands you want to execute
 module load python3/3.8.11
-python3.8 -m pip install --user transformers==4.18.0 pytorch-lightning==1.6.0 pandas==1.4.2 wandb==0.12.14
+python3.8 -m pip install --user transformers==4.18.0 pytorch-lightning==1.6.0 pandas==1.4.2 wandb==0.12.14 sklearn==0.0 
 
 WANDB_API_KEY=$YOUR_API_KEY
 
