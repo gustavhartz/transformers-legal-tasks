@@ -149,7 +149,7 @@ def main(args):
     # Callback issues due to PL issue 11242 for other metrics than loss
     checkpoint_val_loss_callback = ModelCheckpoint(
         monitor='epoch_valid_loss',
-        dirpath='out/checkpoints/',
+        dirpath=os.path.join(args.out_dir, "checkpoints"),
         filename=f'checkpoint-val_loss-name_{make_dataset_name_base(args)}_{args.model_name}_' +
         _checkpoint_ending,
         auto_insert_metric_name=False,
