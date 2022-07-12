@@ -1,7 +1,8 @@
 # Run training of the model using pytorch lightning
 from collections import OrderedDict
 from lightning import PLQAModel
-from models import QAModel
+from models import QAModel, QAModelFC, QAModelFCOnly
+import wandb
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
@@ -32,6 +33,11 @@ MODEL_CLASSES = set(['roberta', 'deberta'])
 
 
 def main(args):
+    # TODO: For remote training, please ensure value is set or hardcoded for purpose
+    if os.getenv("WANDB_API_KEY") is None:
+        logging.warning("No WANDB API key found. Skipping WANDB logging")
+    else:
+        wandb.login(key=os.getenv("WANDB_API_KEY"))
     global hparams
     # run specific random int
     rand_v = random.randint(0, 10000)
@@ -401,6 +407,9 @@ if __name__ == "__main__":
     # Working directory
     argparser.add_argument('--working_dir', type=str,
                            default=None, help='Set/Change working directory')
+    # Cross entropy loss label smoothing
+    argparser.add_argument('--label_smoothing', type=float,
+                           default=0.0, help="Pytorch cross entropy loss label smoothing")
 
     args = argparser.parse_args()
 
