@@ -147,9 +147,10 @@ class QAModelFC(nn.Module):
             )
         # Pass the outputs through an extra linear layer
         sequence_output = outputs[0]
+        b_size = sequence_output.shape[0]
         logits = self.linearOut(sequence_output)
-        logits = self.linearFinal(logits.view(self.hparams.get('batch_size', 1), -1)).view(
-            self.hparams.get('batch_size', 1), -1, 2)
+        logits = self.linearFinal(logits.view(b_size, -1)).view(
+            b_size, -1, 2)
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1).contiguous()
         end_logits = end_logits.squeeze(-1).contiguous()
@@ -239,8 +240,9 @@ class QAModelFCOnly(nn.Module):
 
         sequence_output = outputs[0]
         # FC layer
-        logits = self.fc_out(sequence_output.view(self.hparams.get('batch_size', 1), -1)).view(
-            self.hparams.get('batch_size', 1), self.hparams.get('max_seq_length'), 2)
+        b_size = sequence_output.shape[0]
+        logits = self.fc_out(sequence_output.view(b_size, -1)).view(
+            b_size, self.hparams.get('max_seq_length'), 2)
 
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1).contiguous()
