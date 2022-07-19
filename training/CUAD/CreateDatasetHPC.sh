@@ -29,13 +29,10 @@
 
 # here follow the commands you want to execute
 module load python3/3.8.11
-python3.8 -m pip install --user transformers==4.18.0 pytorch-lightning==1.6.0 pandas==1.4.2 wandb==0.12.14 sklearn==0.0 
+python3.8 -m pip install --user transformers==4.18.0 pytorch-lightning==1.6.0 pandas==1.4.2 wandb==0.12.14 sklearn==0.0 sentencepiece
 
 # Add the updated transformer file
 cp /zhome/35/f/127154/transformers-legal-tasks/squad.py /zhome/35/f/127154/.local/lib/python3.8/site-packages/transformers/data/processors/squad.py
 
 # Create the dataset
-python3.8 /zhome/35/f/127154/transformers-legal-tasks/training/CUAD/main.py --only_first_answer_in_features f --test_examples_chunk_size 10 --only_create_dataset t --dataset_creation_threads 28 --train_file /zhome/35/f/127154/transformers-legal-tasks/data/train.json --train_file_version train_non_sep --working_dir /zhome/35/f/127154/transformers-legal-tasks/training/CUAD --out_dir /work3/s174315/out/
-
-# Train the model 
-# python3.8 /zhome/35/f/127154/transformers-legal-tasks/training/CUAD/main.py --model_path deepset/roberta-base-squad2 --model_name bal_features_v2_noans_1 --gpus 2 --project_name cuad_v3 --batch_size 16 --num_train_epochs 6 --only_first_answer_in_features f --dataset_num_workers 8 --val_check_interval 0.5 --test_examples_chunk_size 10 --test_examples_workers 8 --top_k_checkpoints 2 --dataset_balance_frac 1 --train_file /zhome/35/f/127154/transformers-legal-tasks/data/train.json --train_file_version train_non_sep
+python3.8 /zhome/35/f/127154/transformers-legal-tasks/training/CUAD/main.py --only_first_answer_in_features f --test_examples_chunk_size 10 --only_create_dataset t --dataset_creation_threads 28 --train_file /zhome/35/f/127154/transformers-legal-tasks/data/train.json --train_file_version train_non_sep --working_dir /zhome/35/f/127154/transformers-legal-tasks/training/CUAD --out_dir /work3/s174315/out/ --model_path microsoft/deberta-v3-large --model_type deberta_v3
