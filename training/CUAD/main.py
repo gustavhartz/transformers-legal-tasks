@@ -1,7 +1,7 @@
 # Run training of the model using pytorch lightning
 from collections import OrderedDict
 from lightning import PLQAModel
-from models import QAModel, QAModelFC, QAModelFCOnly
+from models import QAModel
 import wandb
 import pytorch_lightning as pl
 import torch

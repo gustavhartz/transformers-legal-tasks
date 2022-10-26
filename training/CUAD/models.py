@@ -114,7 +114,7 @@ class QAModel(BaseModel):
                  hparams,
                  transformerQA):
 
-        super(QAModel, self).__init__()
+        super(QAModel, self).__init__(hparams, transformerQA)
         # TODO: How to init this one
 
     def forward(
@@ -166,7 +166,7 @@ class QAModelPOA1(BaseModel):
                  hparams,
                  transformerQA):
 
-        super(QAModel, self).__init__()
+        super(QAModelPOA1, self).__init__(hparams, transformerQA)
         self.hparams = hparams
         self.model = getattr(transformerQA, hparams.get('model_type'))
 
