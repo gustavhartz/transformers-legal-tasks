@@ -148,12 +148,13 @@ class QAModel(BaseModel):
         # Additions to base loss
         total_loss = base_loss
 
+        loss = {"total_loss": total_loss}
         if not return_dict:
             output = (start_logits, end_logits) + outputs[2:]
-            return ((total_loss,) + output) if total_loss is not None else output
+            return ((loss,) + output) if total_loss is not None else output
 
         return tfs.modeling_outputs.QuestionAnsweringModelOutput(
-            loss=total_loss,
+            loss=loss,
             start_logits=start_logits,
             end_logits=end_logits,
             hidden_states=outputs.hidden_states,
@@ -174,13 +175,17 @@ class QAModelPOA1(BaseModel):
         self.linearOut = transformerQA.qa_outputs
 
         # Part of answer Architecture
+        # ___________________________
 
-        # hiddensize to 10 because why not
-        self.seq_reduction = nn.Linear(hparams.get('hidden_size'), 8)
+        # hiddensize to out_par because why not
+
+        # some value 2**3
+        out_par = 8
+        self.seq_reduction = nn.Linear(hparams.get('hidden_size'), out_par)
 
         # Reduce a bit more
         self.seq_reduction2 = nn.Linear(
-            8*hparams.get('max_seq_length'), hparams.get('max_seq_length'))
+            out_par*hparams.get('max_seq_length'), hparams.get('max_seq_length'))
 
         # Final size
         self.seq_reduction_linearOut = nn.Linear(hparams.get(
@@ -218,14 +223,16 @@ class QAModelPOA1(BaseModel):
 
         total_loss = base_loss  # PLUS other loss
 
+        loss = {"total_loss": total_loss}
+
         # TODO: Ensure both parts of the loss gets returned for logging purposes
 
         if not return_dict:
             output = (start_logits, end_logits) + outputs[2:]
-            return ((total_loss,) + output) if total_loss is not None else output
+            return ((loss,) + output) if total_loss is not None else output
 
         return tfs.modeling_outputs.QuestionAnsweringModelOutput(
-            loss=total_loss,
+            loss=loss,
             start_logits=start_logits,
             end_logits=end_logits,
             hidden_states=outputs.hidden_states,
