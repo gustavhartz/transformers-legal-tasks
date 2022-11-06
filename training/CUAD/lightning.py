@@ -1,3 +1,4 @@
+from collections import defaultdict
 import torch
 import pytorch_lightning as pl
 from transformers import get_linear_schedule_with_warmup
@@ -11,6 +12,7 @@ from utils import squad_evaluate, squad_evaluate_nbest
 from evaluate import get_results
 import logging
 import pandas as pd
+import numpy as np
 logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
     level=logging.INFO,
@@ -63,20 +65,20 @@ class PLQAModel(pl.LightningModule):
             del inputs["token_type_ids"]
 
         outputs = self.model(**inputs)
-        loss = outputs[0]
-        self.log("train_loss", loss)
-        return {'loss': loss, 'pred': [outputs[1], outputs[2]]}
+        loss = outputs[0].get("total_loss")
+        # self.log({"train_"+k: v for k, v in outputs[0].items()})
+        self.log("train_", outputs[0])
+        return {'loss': loss, 'pred': [outputs[1], outputs[2]], "loss_dict": outputs[0]}
 
     def training_epoch_end(self, outputs):
-        ct, _sum = 0, 0
-        for pred in outputs:
-            _sum += pred['loss'].item()
-            ct += 1
-        self.log(
-            "epoch_train_loss",
-            _sum / ct,
-            sync_dist=True
-        )
+        # Convert dict of losses to array with "key" rows and "len(all_outputs)" columns
+        loss_d = defaultdict(list)
+        for x in outputs:
+            assert "loss_dict" in x, "Using model that does not return a loss dict"
+            for k, v in x["loss_dict"].items():
+                loss_d[k].append(v.item())
+
+        self.log("epoch_train", {k: np.mean(v) for k, v in loss_d.items()})
 
     # VALIDATION
 
@@ -94,29 +96,40 @@ class PLQAModel(pl.LightningModule):
             del inputs["token_type_ids"]
 
         outputs = self.model(**inputs)
-        loss = outputs[0]
         s_l = outputs[1]
         e_l = outputs[2]
-        self.log("valid_loss", loss)
 
-        return {'loss': loss, 'start_logits': s_l, 'feature_indices': feature_indices, 'end_logits': e_l}
+        loss = outputs[0].get("total_loss")
+        self.log("valid_", outputs[0])
+
+        return {'loss': loss, 'start_logits': s_l, 'feature_indices': feature_indices, 'end_logits': e_l, "loss_dict": outputs[0]}
 
     def validation_epoch_end(self, outputs):
         all_outputs = []
         start_time = time.time()
-        loss = 0
         for oup in outputs:
             oup_collected = self.all_gather(oup)
-            if oup_collected['loss'].shape != oup['loss'].shape:
-                all_outputs.extend([{'loss': x[0], 'start_logits': x[1], 'feature_indices': x[2],
-                                   'end_logits':x[3]} for x in zip(*oup_collected.values())])
-            else:
-                all_outputs.extend([oup_collected])
-
-        # To avoid errors on checkpoint callback
-        loss = sum([x['loss'].item()
-                    for x in all_outputs]) / len(all_outputs)
-        self.log("epoch_valid_loss", loss, rank_zero_only=True)
+            # Un-nest potential dicts
+            new_dict_collected = {}
+            for k, v in oup_collected.items():
+                if type(v) == dict:
+                    new_dict_collected = {**new_dict_collected, **v}
+                else:
+                    new_dict_collected[k] = v
+            # Dope way of converting it into a list of dicts
+            all_outputs.extend([dict(zip(new_dict_collected.keys(), x))
+                               for x in list(zip(*new_dict_collected.values()))])
+        loss_keys = [k for k in all_outputs[0].keys() if "loss" in k]
+        loss_dict = defaultdict(list)
+        # N x LossTypes
+        for ele in all_outputs:
+            for k in loss_keys:
+                loss_dict[k].append(ele[k])
+        for k, v in loss_dict.items():
+            # Epoch_valid is added to name of key when logging
+            mean = torch.mean(torch.stack(v))
+            self.log("epoch_valid_"+k, mean, rank_zero_only=True)
+            print(k, mean)
 
         if self.trainer.is_global_zero and not self.trainer.sanity_checking:
 
