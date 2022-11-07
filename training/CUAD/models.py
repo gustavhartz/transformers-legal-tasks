@@ -5,7 +5,7 @@ import torch
 
 
 class BaseModel(nn.Module):
-    """The baseline model for reuse of code across models 
+    """The baseline model for reuse of code across models
 
     """
 
@@ -47,27 +47,31 @@ class BaseModel(nn.Module):
 
             # If BCE loss
             if self.hparams.get('loss_type') == 'bce':
-                loss_fct = nn.BCEWithLogitsLoss()
-                start_positions_bce = torch.zeros(
-                    (start_logits.shape[0], start_logits.shape[1])).to(start_logits.device)
-                for btc, start_position in enumerate(start_positions):
-                    start_positions_bce[btc, start_position] = 1
-                end_positions_bce = torch.zeros(
-                    (end_logits.shape[0], end_logits.shape[1])).to(end_logits.device)
-                for btc, end_position in enumerate(end_positions):
-                    end_positions_bce[btc, end_position] = 1
 
-                # Duplicate code to allow for easier experiments
-                start_loss = loss_fct(start_logits, start_positions)
-                end_loss = loss_fct(end_logits, end_positions)
-                total_loss = (start_loss + end_loss) / 2
+                # Reshape target logits
+                loss_fct = nn.BCEWithLogitsLoss()
+                # TODO: Potential issue this might alter the start_positions outside the loop
+                start_positions = self._target_logits_bce(
+                    start_positions, (start_logits.shape[0], start_logits.shape[1])).to(start_logits.device)
+
+                end_positions = self._target_logits_bce(
+                    end_positions, (end_logits.shape[0], end_logits.shape[1])).to(end_logits.device)
+
             else:
                 loss_fct = nn.CrossEntropyLoss(
                     ignore_index=ignored_index, label_smoothing=self.hparams.get('label_smoothing', 0.0))
-                start_loss = loss_fct(start_logits, start_positions)
-                end_loss = loss_fct(end_logits, end_positions)
-                total_loss = (start_loss + end_loss) / 2
+
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            total_loss = (start_loss + end_loss) / 2
+
         return total_loss
+
+    def _target_logits_bce(self, logits, shape):
+        positions_bce = torch.zeros(shape)
+        for btc, position in enumerate(logits):
+            positions_bce[btc, position] = 1
+        return positions_bce
 
     def get_transformer_outputs(self,
                                 input_ids=None,
@@ -174,22 +178,17 @@ class QAModelPOA1(BaseModel):
         # 768 and 2 from the normal bert config
         self.linearOut = transformerQA.qa_outputs
 
-        # Part of answer Architecture
-        # ___________________________
-
+        # ______________Part of answer Architecture______________
         # hiddensize to out_par because why not
 
-        # some value 2**3
-        out_par = 8
-        self.seq_reduction = nn.Linear(hparams.get('hidden_size'), out_par)
+        # some value 2**2
+        self.out_par = 4
+        self.seq_reduction = nn.Linear(hparams.get(
+            'hidden_size'), self.out_par)
 
-        # Reduce a bit more
-        self.seq_reduction2 = nn.Linear(
-            out_par*hparams.get('max_seq_length'), hparams.get('max_seq_length'))
-
-        # Final size
-        self.seq_reduction_linearOut = nn.Linear(hparams.get(
-            'max_seq_length'), hparams.get('max_seq_length'))
+        # Reduce single value pr. token
+        self.seq_reduction_final = nn.Linear(
+            self.out_par*hparams.get('max_seq_length'), hparams.get('max_seq_length'))
 
     def forward(
         self,
@@ -220,10 +219,33 @@ class QAModelPOA1(BaseModel):
             start_logits, end_logits, start_positions, end_positions)
 
         # Add the other loss
+        # B, Max_seq, out_par
+        poa_logits = self.seq_reduction(sequence_output)
+        poa_logits = self.seq_reduction_final(
+            poa_logits.reshape(self.hparams.get("batch_size"), -1))
+        # 1 value pr. token
+        poa_logits = poa_logits.reshape(self.hparams.get(
+            "batch_size"), self.hparams.get('max_seq_length'), 1)
 
-        total_loss = base_loss  # PLUS other loss
+        # Calculate loss if part of answer like we usually do
+        target = torch.zeros(size=(self.hparams.get(
+            "batch_size"), self.hparams.get('max_seq_length')))
+        for btc in range(self.hparams.get("batch_size")):
+            fencepost = 1
+            if end_positions.squeeze()[btc] == self.hparams.get('max_seq_length'):
+                fencepost = 0
 
-        loss = {"total_loss": total_loss}
+            target[btc, start_positions.squeeze()[btc]:end_positions.squeeze()[
+                btc]+fencepost] = 1
+
+        loss_fct = nn.BCEWithLogitsLoss()
+
+        part_of_answer_loss = loss_fct(poa_logits, target)
+
+        total_loss = base_loss + 0.1*part_of_answer_loss  # PLUS other loss
+
+        loss = {"total_loss": total_loss,
+                "qa_base_loss": base_loss, "poa_loss": 0.1*part_of_answer_loss}
 
         # TODO: Ensure both parts of the loss gets returned for logging purposes
 
