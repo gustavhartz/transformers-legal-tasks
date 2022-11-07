@@ -410,6 +410,9 @@ if __name__ == "__main__":
     # Cross entropy loss label smoothing
     argparser.add_argument('--label_smoothing', type=float,
                            default=0.0, help="Pytorch cross entropy loss label smoothing")
+    # Loss type
+    argparser.add_argument('--loss_type', type=str,
+                           default=None, help="Toggle BCE loss implementation")
 
     args = argparser.parse_args()
 
