@@ -1,27 +1,27 @@
 # Run training of the model using pytorch lightning
+import torch.distributed as dist
+import random
+from utils_valid import feature_path
+from helpers import str2bool, make_dataset_path, set_seed, make_dataset_name_base
+from utils import delete_encoding_layers
+import sys
+import gc
+import logging
+from utils_v2 import get_balanced_dataset_v2
+from data import get_balanced_dataset
+import os
+import argparse
+from transformers import AutoTokenizer, AutoConfig, AutoModelForQuestionAnswering, SquadV2Processor, squad_convert_examples_to_features
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger
+from torch.utils.data import DataLoader
+import torch
+import pytorch_lightning as pl
+import wandb
 from collections import OrderedDict
 from lightning import PLQAModel
-from models import QAModel
-import wandb
-import pytorch_lightning as pl
-import torch
-from torch.utils.data import DataLoader
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from transformers import AutoTokenizer, AutoConfig, AutoModelForQuestionAnswering, SquadV2Processor, squad_convert_examples_to_features
-import argparse
-import os
-from data import get_balanced_dataset
-from utils_v2 import get_balanced_dataset_v2
-import logging
-import gc
-import sys
-from utils import delete_encoding_layers
-from helpers import str2bool, make_dataset_path, set_seed, make_dataset_name_base
-from utils_valid import feature_path
-import random
-import os
-import torch.distributed as dist
+from models import QAModel, QAModelPOA1
+loaded_ml_models = [QAModel, QAModelPOA1]
 
 logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
@@ -60,7 +60,12 @@ def main(args):
         cache_dir=None,
     )
     robertaQA.train()
-    model = QAModel(hparams, robertaQA)
+    try:
+        model = globals()[args.ml_model_name](hparams, robertaQA)
+    except KeyError as e:
+        logging.info(
+            f"It appears a the ml_model_name is incorrect. Currently only {loaded_ml_models} are loaded")
+        raise e
 
     # Checkpoint loading will fail if we delete layer due to mismatch between dicts
     if args.resume_from_pl_checkpoint and args.delete_transformer_layers:
@@ -266,6 +271,9 @@ if __name__ == "__main__":
     # Model name
     argparser.add_argument('--model_name', type=str,
                            default="roberta_cuad_checkpoint", help='Friendly name for the model. No special chars')
+    # Model name
+    argparser.add_argument('--ml_model_name', type=str,
+                           default="QAModel", help='The name of the model to load from the models.py file')
     # Model type
     argparser.add_argument('--model_type', type=str,
                            default='roberta', help='Model type to use')
