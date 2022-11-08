@@ -20,6 +20,45 @@ class BaseModel(nn.Module):
         # 768 and 2 from the normal bert config
         self.linearOut = transformerQA.qa_outputs
 
+    def get_transformer_outputs(self,
+                                input_ids=None,
+                                attention_mask=None,
+                                token_type_ids=None,
+                                position_ids=None,
+                                head_mask=None,
+                                inputs_embeds=None,
+                                output_attentions=None,
+                                output_hidden_states=None,
+                                return_dict=None):
+
+        if (self.hparams.get('model_type') == 'deberta'):
+            outputs = self.model(
+                input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                position_ids=position_ids,
+                inputs_embeds=inputs_embeds,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+        else:
+            outputs = self.model(
+                input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+        return outputs
+
+    def forward(self):
+        raise NotImplementedError
+
     def calculate_base_loss(self, start_logits, end_logits, start_positions, end_positions):
         """Take the output start- and end-logits obtained from the linear out layer and calculates the loss from it as done in thesis and CUAD paper
 
@@ -67,50 +106,32 @@ class BaseModel(nn.Module):
 
         return total_loss
 
+    def calculate_poa_loss(self, logits, start_positions, end_positions):
+        batch_size = logits.shape[0]
+        poa_loss = None
+        # Calculate loss if part of answer like we usually do
+        if start_positions is not None and end_positions is not None:
+            target = torch.zeros(
+                size=(batch_size, self.hparams.get('max_seq_length')))
+            for btc in range(batch_size):
+                fencepost = 1
+                if end_positions.squeeze()[btc] == self.hparams.get('max_seq_length'):
+                    fencepost = 0
+
+                target[btc, start_positions.squeeze()[btc]:end_positions.squeeze()[
+                    btc]+fencepost] = 1
+            loss_fct = nn.BCEWithLogitsLoss()
+            # Work on distributed and single
+            if len(logits.shape) > len(target.shape):
+                target = target.unsqueeze(-1)
+            poa_loss = loss_fct(logits, target)
+        return poa_loss
+
     def _target_logits_bce(self, logits, shape):
         positions_bce = torch.zeros(shape)
         for btc, position in enumerate(logits):
             positions_bce[btc, position] = 1
         return positions_bce
-
-    def get_transformer_outputs(self,
-                                input_ids=None,
-                                attention_mask=None,
-                                token_type_ids=None,
-                                position_ids=None,
-                                head_mask=None,
-                                inputs_embeds=None,
-                                output_attentions=None,
-                                output_hidden_states=None,
-                                return_dict=None):
-
-        if (self.hparams.get('model_type') == 'deberta'):
-            outputs = self.model(
-                input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                inputs_embeds=inputs_embeds,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
-        else:
-            outputs = self.model(
-                input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                head_mask=head_mask,
-                inputs_embeds=inputs_embeds,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
-        return outputs
-
-    def forward(self):
-        raise NotImplementedError
 
 
 class QAModel(BaseModel):
@@ -218,29 +239,22 @@ class QAModelPOA1(BaseModel):
         base_loss = self.calculate_base_loss(
             start_logits, end_logits, start_positions, end_positions)
 
-        # Add the other loss
+        # _________________Part of Answer Loss_______________
+
+        # Get batch_size from data as we don't drop the last batch
+        batch_size = sequence_output.shape[0]
+
         # B, Max_seq, out_par
         poa_logits = self.seq_reduction(sequence_output)
         poa_logits = self.seq_reduction_final(
-            poa_logits.reshape(self.hparams.get("batch_size"), -1))
+            poa_logits.reshape(batch_size, -1))
         # 1 value pr. token
-        poa_logits = poa_logits.reshape(self.hparams.get(
-            "batch_size"), self.hparams.get('max_seq_length'), 1)
+        poa_logits = poa_logits.reshape(
+            batch_size, self.hparams.get('max_seq_length'), 1)
 
-        # Calculate loss if part of answer like we usually do
-        target = torch.zeros(size=(self.hparams.get(
-            "batch_size"), self.hparams.get('max_seq_length')))
-        for btc in range(self.hparams.get("batch_size")):
-            fencepost = 1
-            if end_positions.squeeze()[btc] == self.hparams.get('max_seq_length'):
-                fencepost = 0
-
-            target[btc, start_positions.squeeze()[btc]:end_positions.squeeze()[
-                btc]+fencepost] = 1
-
-        loss_fct = nn.BCEWithLogitsLoss()
-
-        part_of_answer_loss = loss_fct(poa_logits, target)
+        # POA loss
+        part_of_answer_loss = self.calculate_poa_loss(
+            poa_logits, start_positions, end_positions)
 
         total_loss = base_loss + 0.1*part_of_answer_loss  # PLUS other loss
 
