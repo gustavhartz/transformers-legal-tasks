@@ -124,7 +124,7 @@ class BaseModel(nn.Module):
             # Work on distributed and single
             if len(logits.shape) > len(target.shape):
                 target = target.unsqueeze(-1)
-            poa_loss = loss_fct(logits, target)
+            poa_loss = loss_fct(logits, target.to(logits.device))
         return poa_loss
 
     def _target_logits_bce(self, logits, shape):
